@@ -15,7 +15,7 @@ const requiredTables = [
   "chat_communities", "chat_community_groups",
   "content_permission_requests", "message_media",
   "push_subscriptions", "teacher_documents",
-  "assignments", "hand_raises", "study_groups", "media_object_chunks"
+  "assignments", "hand_raises", "study_groups", "media_object_chunks", "api_idempotency_records", "resumable_upload_sessions", "resumable_upload_chunks"
 ];
 
 const requiredColumns: Array<[string, string]> = [
@@ -32,7 +32,17 @@ const requiredColumns: Array<[string, string]> = [
   ["media_object_chunks", "size_bytes"],
   ["media_object_chunks", "chunk_index"],
   ["media_object_chunks", "data"],
-  ["media_object_chunks", "created_at"]
+  ["media_object_chunks", "created_at"],
+  ["resumable_upload_sessions", "user_id"],
+  ["resumable_upload_sessions", "total_bytes"],
+  ["resumable_upload_sessions", "chunk_bytes"],
+  ["resumable_upload_sessions", "expires_at"],
+  ["resumable_upload_sessions", "storage_key"],
+  ["resumable_upload_sessions", "media_url"],
+  ["resumable_upload_chunks", "session_id"],
+  ["resumable_upload_chunks", "byte_offset"],
+  ["resumable_upload_chunks", "data"],
+  ["resumable_upload_chunks", "sha256"]
 ];
 
 router.get("/healthz", async (_req, res): Promise<void> => {

@@ -126,6 +126,7 @@ app.use(
       "Origin",
       "X-Requested-With",
       "X-CSRF-Token",
+      "Idempotency-Key",
     ],
     optionsSuccessStatus: 204,
   }),

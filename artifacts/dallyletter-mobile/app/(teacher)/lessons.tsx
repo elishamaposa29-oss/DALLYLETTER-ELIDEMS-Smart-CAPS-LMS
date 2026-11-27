@@ -5,6 +5,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
+import * as FileSystem from "expo-file-system/legacy";
 import { useState } from "react";
 import {
   Alert,
@@ -23,6 +24,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
 import OfflineMediaDownload from "@/components/OfflineMediaDownload";
+import { uploadFileResumably } from "@/components/ResumableUpload";
 
 function extractLessonLinks(value: unknown): string[] {
   const source = String(value ?? "");
@@ -99,26 +101,19 @@ export default function TeacherLessons() {
     }
     setUploadingMedia(true);
     try {
-      const form = new FormData();
-      form.append("file", {
-        uri: asset.uri,
-        name: asset.fileName || (asset.type === "video" ? "lesson-video.mp4" : "lesson-image.jpg"),
-        type: asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg"),
-      } as any);
-      const response = await fetch(getApiUrl("/api/lessons/media"), {
-        method: "POST",
-        headers: token ? { Authorization: "Bearer " + token } : {},
-        body: form,
-      });
-      const uploaded = await response.json().catch(() => ({}));
-      if (!response.ok || !uploaded.mediaUrl) throw new Error(uploaded.error || "Media upload failed");
+      const fileName = asset.fileName || (asset.type === "video" ? "lesson-video.mp4" : "lesson-image.jpg");
+      const mimeType = asset.mimeType || (asset.type === "document" ? (fileName.toLowerCase().endsWith(".pdf") ? "application/pdf" : fileName.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg");
+      const info = await FileSystem.getInfoAsync(asset.uri);
+      const totalBytes = Number((asset as any).fileSize || (info as any).size || 0);
+      if (!user?.id || !totalBytes) throw new Error("Could not verify the selected file size or account.");
+      const uploaded = await uploadFileResumably({ userId:Number(user.id), token:token || "", uri:asset.uri, fileName, mimeType, totalBytes });
       setMediaUrl(String(uploaded.mediaUrl));
       if (asset.type === "video") setType("video");
       else if (asset.type === "document") setType("mixed");
       else setType("image");
       Alert.alert("Upload complete", "Media is attached to this lesson draft. Save the lesson to publish it.");
     } catch (error) {
-      Alert.alert("Upload failed", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert("Upload interrupted", error instanceof Error ? error.message : "Reconnect and retry the upload.");
     } finally {
       setUploadingMedia(false);
     }

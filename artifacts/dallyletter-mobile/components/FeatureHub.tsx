@@ -8,11 +8,15 @@ import { getListNotificationsQueryKey, useListNotifications, useMarkNotification
 import { useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { enqueueSubmission, listQueuedSubmissions, removeQueuedSubmission, updateQueuedSubmission, type QueuedSubmission } from "@/components/QueuedSubmissionStore";
+import { createSubmissionIdempotencyKey } from "@/components/QueuedSubmissionStoreCore";
+import { listOfflineLearningRecords, putOfflineLearningRecord, removeOfflineLearningRecord } from "@/components/OfflineLearningStore";
+import { uploadFileResumably } from "@/components/ResumableUpload";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -22,8 +26,9 @@ import VoiceMessageComposer, { type VoiceRecordingFile } from "@/components/Voic
 import AuthenticatedAudioMessage from "@/components/AuthenticatedAudioMessage";
 import NativePushControls from "@/components/NativePushControls";
 import BreakElidemsShortcut from "@/components/BreakElidemsShortcut";
+import CloudStorageManager from "@/components/CloudStorageManager";
 
-type Section = "assignments" | "exercises" | "polls" | "notifications" | "groups" | "messages" | "payments" | "achievements" | "prefect" | "reports" | "audit";
+type Section = "cloud" | "assignments" | "exercises" | "polls" | "notifications" | "groups" | "messages" | "payments" | "achievements" | "prefect" | "reports" | "audit";
 type Row = Record<string, any> & { id: number; title?: string; name?: string };
 
 function stableValue(value: any): string {
@@ -54,6 +59,7 @@ function queuedExerciseAlreadyAccepted(current: any, item: QueuedSubmission): bo
 }
 
 const sections: { id: Section; title: string; subtitle: string; icon: string }[] = [
+  { id: "cloud", title: "Cloud storage", subtitle: "Your private 10 GB learning file space", icon: "cloud" },
   { id: "assignments", title: "Assignments", subtitle: "Due dates, submissions and feedback", icon: "clipboard" },
   { id: "exercises", title: "Exercises", subtitle: "Practice, submit answers and review results", icon: "edit-3" },
   { id: "polls", title: "Polls & quizzes", subtitle: "Timed quizzes, attempts and results", icon: "check-square" },
@@ -137,6 +143,21 @@ export default function FeatureHub() {
   const [privateRecipient, setPrivateRecipient] = useState<Row | null>(null);
   const [privateMessages, setPrivateMessages] = useState<Row[]>([]);
   const [privateDraft, setPrivateDraft] = useState("");
+  useEffect(() => {
+    if (!user?.id || !privateRecipient?.id) return;
+    let active = true;
+    setPrivateDraft("");
+    void listOfflineLearningRecords(user.id).then(records => {
+      const draft = records.find(row => row.kind === "draft" && row.id === "private-message:" + privateRecipient.id);
+      if (active && typeof (draft?.value as any)?.content === "string") setPrivateDraft((draft!.value as any).content);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [user?.id, privateRecipient?.id]);
+  useEffect(() => {
+    if (!user?.id || !privateRecipient?.id || !privateDraft.trim()) return;
+    const timer = setTimeout(() => { void putOfflineLearningRecord(user.id, "draft", "private-message:" + privateRecipient.id, { content: privateDraft }).catch(() => undefined); }, 350);
+    return () => clearTimeout(timer);
+  }, [user?.id, privateRecipient?.id, privateDraft]);
   const [privateBusy, setPrivateBusy] = useState(false);
   const [privateMediaBusy, setPrivateMediaBusy] = useState(false);
   const [groupSettings, setGroupSettings] = useState<any>(null);
@@ -251,6 +272,7 @@ export default function FeatureHub() {
       const itemKey = section + ":" + String(selected.id);
       saved[itemKey] = { section, item: { ...selected }, detail: detail ? { ...detail } : null, savedAt: Date.now(), accountId: user.id, role };
       await AsyncStorage.setItem(key, JSON.stringify(saved));
+      await putOfflineLearningRecord(user.id, "lesson", itemKey, saved[itemKey]);
       Alert.alert("Saved for offline access", "This learning item and the details currently available are saved on this device. Submissions stay drafts until the server confirms them.");
     } catch {
       Alert.alert("Could not save", "Check available device storage and try again.");
@@ -307,7 +329,7 @@ export default function FeatureHub() {
               continue;
             }
           }
-          await request(item.path,{method:"POST",body:item.body});
+          await request(item.path,{method:"POST",body:item.body,headers:{"Idempotency-Key":item.idempotencyKey || item.id}});
           await clearDraft(item);
           await removeQueuedSubmission(user.id,item.id);
         } catch (e) {
@@ -584,11 +606,14 @@ export default function FeatureHub() {
     }
     setUploading(true);
     try {
-      const form = new FormData();
-      form.append("file", { uri: asset.uri, name: asset.fileName || "lesson-media", type: asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg") } as any);
-      const result = await request("/api/assignments/material", { method: "POST", body: form });
-      if (!result.attachmentUrl) throw new Error("Upload completed without an attachment link");
-      setAttachmentUrl(result.attachmentUrl);
+      const fileName = asset.fileName || "lesson-media";
+      const mimeType = asset.mimeType || (asset.type === "document" ? (fileName.toLowerCase().endsWith(".pdf") ? "application/pdf" : fileName.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg");
+      const info = await FileSystem.getInfoAsync(asset.uri);
+      const totalBytes = Number((asset as any).fileSize || (info as any).size || 0);
+      if (!user?.id || !totalBytes) throw new Error("Could not verify the selected file size or account.");
+      const result = await uploadFileResumably({ userId:Number(user.id), token:token || "", uri:asset.uri, fileName, mimeType, totalBytes });
+      if (!result.mediaUrl) throw new Error("Upload completed without an attachment link");
+      setAttachmentUrl(result.mediaUrl);
       Alert.alert("Uploaded", "Media is ready to attach to your assignment.");
     } catch (e) { Alert.alert("Upload failed", e instanceof Error ? e.message : "Please retry."); }
     finally { setUploading(false); }
@@ -652,8 +677,10 @@ export default function FeatureHub() {
       return;
     }
     setBusy(true);
+    const idempotencyKey = createSubmissionIdempotencyKey();
+    const submissionBody = { content: answerText.trim() || (attachmentUrl ? "See attached submission file." : ""), fileUrl: attachmentUrl || null, fileName: attachmentUrl ? attachmentUrl.split("/").pop() : null };
     try {
-      await request(`/api/assignments/${selected.id}/submit`, { method: "POST", body: JSON.stringify({ content: answerText.trim() || (attachmentUrl ? "See attached submission file." : ""), fileUrl: attachmentUrl || null, fileName: attachmentUrl ? attachmentUrl.split("/").pop() : null }) });
+      await request(`/api/assignments/${selected.id}/submit`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(submissionBody) });
       setAnswerText(""); setAttachmentUrl("");
       if (user?.id) await AsyncStorage.removeItem("dallyletter_assignment_draft_" + user.id + "_" + selected.id).catch(() => undefined);
       Alert.alert("Submitted", "Your work was submitted successfully.");
@@ -662,7 +689,7 @@ export default function FeatureHub() {
       const message=e instanceof Error?e.message:"Please retry.";
       if (/network request failed|failed to fetch|network error|offline|timed? ?out|connection lost/i.test(message)) {
         try {
-          await enqueueSubmission({userId:Number(user?.id),kind:"assignment",targetId:Number(selected.id),path:`/api/assignments/${selected.id}/submit`,body:JSON.stringify({content:answerText.trim()||(attachmentUrl?"See attached submission file.":""),fileUrl:attachmentUrl||null,fileName:attachmentUrl?attachmentUrl.split("/").pop():null})});
+          await enqueueSubmission({userId:Number(user?.id),kind:"assignment",targetId:Number(selected.id),path:`/api/assignments/${selected.id}/submit`,body:JSON.stringify(submissionBody),idempotencyKey});
           await refreshQueuedSubmissions();
           Alert.alert("Saved for retry","You appear to be offline. Your assignment is stored on this device and will retry when the app becomes active again.");
         } catch { Alert.alert("Submission failed",message); }
@@ -742,12 +769,14 @@ export default function FeatureHub() {
   const submitExercise = async () => {
     if (!isStudent || !selected || !detail?.exercise || busy) return;
     setBusy(true);
+    const idempotencyKey = createSubmissionIdempotencyKey();
+    const packedAnswers = (detail.questions || []).map((q: any) => {
+      const answer = answers[String(q.id)] || {};
+      return { questionId: q.id, ...answer, ...(answer.textAnswer ? {} : { textAnswer: "" }), ...(answer.drawData ? { drawData: { ...(answer.drawData as any), teacherDrawing: q.config?.teacherDrawing ?? null, learnerDrawing: answer.drawData } } : {}) };
+    });
+    const submissionBody = { newAttempt, answers: packedAnswers };
     try {
-      const packedAnswers = (detail.questions || []).map((q: any) => {
-        const answer = answers[String(q.id)] || {};
-        return { questionId: q.id, ...answer, ...(answer.textAnswer ? {} : { textAnswer: "" }), ...(answer.drawData ? { drawData: { ...(answer.drawData as any), teacherDrawing: q.config?.teacherDrawing ?? null, learnerDrawing: answer.drawData } } : {}) };
-      });
-      await request(`/api/exercises/${detail.exercise.id}/submit`, { method: "POST", body: JSON.stringify({ newAttempt, answers: packedAnswers }) });
+      await request(`/api/exercises/${detail.exercise.id}/submit`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(submissionBody) });
       if (draftKey) await AsyncStorage.removeItem(draftKey).catch(() => undefined);
       setDraftKey(null);
       setNewAttempt(false);
@@ -758,8 +787,7 @@ export default function FeatureHub() {
       const message=e instanceof Error?e.message:"Please retry.";
       if (/network request failed|failed to fetch|network error|offline|timed? ?out|connection lost/i.test(message)) {
         try {
-          const packedAnswers = (detail.questions || []).map((q:any) => { const answer=answers[String(q.id)]||{}; return {questionId:q.id,...answer,...(answer.textAnswer?{}:{textAnswer:""}),...(answer.drawData?{drawData:{...(answer.drawData as any),teacherDrawing:q.config?.teacherDrawing??null,learnerDrawing:answer.drawData}}:{})}; });
-          await enqueueSubmission({userId:Number(user?.id),kind:"exercise",targetId:Number(detail.exercise.id),path:`/api/exercises/${detail.exercise.id}/submit`,body:JSON.stringify({newAttempt,answers:packedAnswers})});
+          await enqueueSubmission({userId:Number(user?.id),kind:"exercise",targetId:Number(detail.exercise.id),path:`/api/exercises/${detail.exercise.id}/submit`,body:JSON.stringify(submissionBody),idempotencyKey});
           await refreshQueuedSubmissions();
           Alert.alert("Saved for retry","You appear to be offline. Your exercise attempt is stored on this device and will retry when the app becomes active again. Your draft remains available.");
         } catch { Alert.alert("Submission failed",message); }
@@ -771,12 +799,13 @@ export default function FeatureHub() {
   const submitPoll = async () => {
     if (!isStudent || !selected || !detail || busy) return;
     setBusy(true);
+    const idempotencyKey = createSubmissionIdempotencyKey();
     const pollQuestions = detail.questions || [];
     const packed = pollQuestions.map((q: any) => ({ questionId: q.id, selectedOptionId: answers[String(q.id)] }));
     try {
       if (packed.some((a: any) => !a.selectedOptionId)) throw new Error("Answer every question before submitting.");
       const body = { answers: packed, resultPrivacy: pollPrivacy, selectedFriendIds: [] };
-      await request(`/api/polls/${selected.id}/submit`, { method: "POST", body: JSON.stringify(body) });
+      await request(`/api/polls/${selected.id}/submit`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) });
       if (user?.id) await AsyncStorage.removeItem(`dallyletter_poll_draft_${user.id}_${selected.id}`).catch(() => undefined);
       const result = await request(`/api/polls/${selected.id}/my-results`);
       setPollResult(result);
@@ -787,7 +816,7 @@ export default function FeatureHub() {
         try {
           const body = { answers: packed, resultPrivacy: pollPrivacy, selectedFriendIds: [] };
           await AsyncStorage.setItem(`dallyletter_poll_draft_${user.id}_${selected.id}`, JSON.stringify({ item: selected, detail, answers: packed, resultPrivacy: pollPrivacy, savedAt: Date.now() }));
-          await enqueueSubmission({ userId: Number(user.id), kind: "poll", targetId: Number(selected.id), path: `/api/polls/${selected.id}/submit`, body: JSON.stringify(body) });
+          await enqueueSubmission({ userId: Number(user.id), kind: "poll", targetId: Number(selected.id), path: `/api/polls/${selected.id}/submit`, body: JSON.stringify(body), idempotencyKey });
           await refreshQueuedSubmissions();
           Alert.alert("Saved as draft", "Your poll answers are saved on this device and will be submitted when the app reconnects. They are not published yet.");
         } catch {
@@ -835,8 +864,16 @@ export default function FeatureHub() {
   const sendPrivateMessage = async () => {
     if (!privateRecipient || !privateDraft.trim() || privateBusy) return;
     setPrivateBusy(true);
-    try { await request("/api/messages",{method:"POST",body:JSON.stringify({recipientId:Number(privateRecipient.id),content:privateDraft.trim(),type:"text"})}); setPrivateDraft(""); const messages=await request("/api/messages?recipientId="+encodeURIComponent(String(privateRecipient.id))); setPrivateMessages(Array.isArray(messages)?messages:[]); }
-    catch(e) { Alert.alert("Message not sent",e instanceof Error?e.message:"Reconnect and retry."); }
+    const idempotencyKey=createSubmissionIdempotencyKey();
+    const body=JSON.stringify({recipientId:Number(privateRecipient.id),content:privateDraft.trim(),type:"text",idempotencyKey});
+    try { await request("/api/messages",{method:"POST",headers:{"Idempotency-Key":idempotencyKey},body}); await removeOfflineLearningRecord(Number(user?.id),"draft","private-message:"+privateRecipient.id); setPrivateDraft(""); const messages=await request("/api/messages?recipientId="+encodeURIComponent(String(privateRecipient.id))); setPrivateMessages(Array.isArray(messages)?messages:[]); }
+    catch(e) {
+      const message=e instanceof Error?e.message:"Reconnect and retry.";
+      if (/network request failed|failed to fetch|network error|offline|timed? ?out|connection lost/i.test(message) && user?.id) {
+        try { await enqueueSubmission({userId:Number(user.id),kind:"message",targetId:Number(privateRecipient.id),path:"/api/messages",body,idempotencyKey}); await refreshQueuedSubmissions(); await removeOfflineLearningRecord(Number(user.id),"draft","private-message:"+privateRecipient.id); setPrivateDraft(""); Alert.alert("Saved offline","Your private message is queued on this device and will send when the connection returns."); }
+        catch { Alert.alert("Message not saved","Device storage could not save this message. Keep the text and retry when online."); }
+      } else Alert.alert("Message not sent",message);
+    }
     finally { setPrivateBusy(false); }
   };
   const uploadPrivateMedia = async (documentOnly = false) => {
@@ -1240,6 +1277,7 @@ export default function FeatureHub() {
         ))}
       </ScrollView> : <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <TouchableOpacity onPress={() => { setSection(null); setSelected(null); setDetail(null); setError(""); }} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}><Feather name="arrow-left" size={18} color={colors.primary}/><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>All learning tools</Text></TouchableOpacity>
+        {section === "cloud" && <CloudStorageManager />}
         {section === "assignments" && (canCreateAssignments || (editingAssignmentId!==null&&canEditAssignments)) && <>
           <Text style={styles.sectionTitle}>{editingAssignmentId !== null ? "Edit assignment" : "Create assignment"}</Text>
           <TextInput style={styles.input} value={newTitle} onChangeText={setNewTitle} placeholder="Assignment title" placeholderTextColor={colors.mutedForeground}/>

@@ -135,6 +135,8 @@ jobs:
         env:
           API_BASE_URL: http://127.0.0.1:4000
         run: node artifacts/api-server/scripts/smoke-post-merge-routes.mjs
+      - name: Test cloud quota recovery, concurrent reservations and cross-account isolation
+        run: pnpm --dir artifacts/api-server run test:cloud-storage-integration
 
       - name: Diagnose deployed Render API route surface (read-only, no credentials)
         # Production uptime is observed, but must not suppress isolated PostgreSQL/API integration tests.

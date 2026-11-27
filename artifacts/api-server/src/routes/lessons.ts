@@ -25,7 +25,7 @@ import {
   getMediaStats,
   isAllowedMediaType,
   MAX_MEDIA_SIZE_BYTES,
-  persistUploadedMedia,
+  persistUploadedMedia, isCloudQuotaExceeded,
   streamStoredMedia,
   removeStoredMedia,
 } from "../lib/media-storage";
@@ -53,8 +53,26 @@ function validMediaShare(storageKey: string, token: unknown): boolean {
   const supplied = Buffer.from(signature, "hex");
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
 }
+function signMediaPlayback(storageKey: string, userId: number, expiresAt: number): string {
+  const secret = mediaShareSecret();
+  if (!secret) throw new Error("Media playback signing secret is not configured");
+  return `${expiresAt}.${userId}.${createHmac("sha256", secret).update(`${storageKey}.${userId}.${expiresAt}`).digest("hex")}`;
+}
+function validMediaPlayback(storageKey: string, token: unknown): boolean {
+  if (typeof token !== "string") return false;
+  const parts = token.split(".");
+  if (parts.length !== 3 || !/^[0-9]{10,12}$/.test(parts[0]) || !/^[1-9][0-9]*$/.test(parts[1]) || !/^[a-f0-9]{64}$/i.test(parts[2])) return false;
+  const expiresAt = Number(parts[0]), userId = Number(parts[1]), signature = parts[2];
+  if (!Number.isSafeInteger(expiresAt) || expiresAt < Math.floor(Date.now() / 1000) || !Number.isSafeInteger(userId)) return false;
+  const secret = mediaShareSecret();
+  if (!secret) return false;
+  const expected = createHmac("sha256", secret).update(`${storageKey}.${userId}.${expiresAt}`).digest();
+  const supplied = Buffer.from(signature, "hex");
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+}
 const mediaAccess = (req: Request, res: Response, next: NextFunction) => {
-  if (validMediaShare(String(req.params.storageKey || ""), req.query.shareToken)) { next(); return; }
+  const storageKey = String(req.params.storageKey || "");
+  if (validMediaShare(storageKey, req.query.shareToken) || validMediaPlayback(storageKey, req.query.playbackToken)) { next(); return; }
   requireAuth(req, res, next);
 };
 
@@ -155,7 +173,7 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
       return;
     }
 
-    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+    persistUploadedMedia(file.filename, file.mimetype, file.path, { userId: Number(req.currentUser!.id), category: Number(req.query.groupId) > 0 ? "study_group" : file.mimetype.startsWith("video/") ? "video" : "lesson", fileName: file.originalname }).then(() => {
       res.status(201).json({
         mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
         storageKey: file.filename,
@@ -163,6 +181,7 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
         size: file.size,
       });
     }).catch((error) => {
+      if (isCloudQuotaExceeded(error)) { res.status(413).json({ code: "CLOUD_QUOTA_EXCEEDED", error: error instanceof Error ? error.message.split(":").slice(1).join(":").trim() : "Cloud storage quota exceeded" }); return; }
       logger.error({
         error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
         persistentStorageConfigured: isObjectStorageConfigured(),
@@ -175,6 +194,21 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
       });
     });
   });
+});
+
+router.post("/lessons/media/:storageKey/playback", requireAuth, async (req, res): Promise<void> => {
+  const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : "";
+  if (!/^[a-f0-9-]{36}$/i.test(storageKey)) { res.status(400).json({ error: "Invalid media key" }); return; }
+  try {
+    await getMediaStats(storageKey);
+    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 12;
+    const playbackToken = signMediaPlayback(storageKey, Number(req.currentUser!.id), expiresAt);
+    const type = typeof req.body?.type === "string" && isAllowedMediaType(req.body.type) ? req.body.type : "application/octet-stream";
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ playbackUrl: `/api/lessons/media/${storageKey}?type=${encodeURIComponent(type)}&playbackToken=${encodeURIComponent(playbackToken)}`, expiresAt });
+  } catch {
+    res.status(404).json({ error: "Media not found" });
+  }
 });
 
 router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): Promise<void> => {

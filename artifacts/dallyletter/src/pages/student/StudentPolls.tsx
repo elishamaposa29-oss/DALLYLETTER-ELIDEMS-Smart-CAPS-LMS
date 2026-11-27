@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { deleteOfflineDraft, listOfflineDrafts, saveOfflineDraft } from "@/lib/offline-drafts";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import UserProfileLink from "@/components/UserProfileLink";
 import { Loader2, ClipboardList, Play, CheckCircle, XCircle, Trophy, Clock, ChevronRight, ChevronLeft, BarChart3, Shield, Zap } from "lucide-react";
@@ -29,6 +30,7 @@ export default function StudentPolls() {
   const [screen, setScreen] = useState<Screen>("list");
   const [activePoll, setActivePoll] = useState<PollDetail | null>(null);
   const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [draftLoadedPollId, setDraftLoadedPollId] = useState<number | null>(null);
   const [currentQ, setCurrentQ] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [results, setResults] = useState<SubmitResult | null>(null);
@@ -92,7 +94,17 @@ export default function StudentPolls() {
     if (!r.ok) { toast({ variant: "destructive", title: "Could not load poll" }); return; }
     const poll = await r.json() as PollDetail;
     setActivePoll(poll);
-    setAnswers({});
+    setDraftLoadedPollId(null);
+    let restoredAnswers: Record<number, number> = {};
+    if (user?.id) {
+      try {
+        const drafts = await listOfflineDrafts<any>(token() || "", user.id);
+        const draft = drafts.find(item => item.key === "poll:" + poll.id)?.value;
+        if (draft?.answers && typeof draft.answers === "object") restoredAnswers = draft.answers;
+      } catch { /* Poll remains usable without optional local draft storage. */ }
+    }
+    setAnswers(restoredAnswers);
+    setDraftLoadedPollId(poll.id);
     setInstantFeedback({});
     setInstantMarking(false);
     setCurrentQ(0);
@@ -100,30 +112,50 @@ export default function StudentPolls() {
     setScreen("quiz");
   }
 
+  useEffect(() => {
+    if (!activePoll || !user?.id || screen !== "quiz" || draftLoadedPollId !== activePoll.id) return;
+    const timer = window.setTimeout(() => {
+      void saveOfflineDraft("poll:" + activePoll.id, { answers, resultPrivacy }, token() || "", user.id).catch(() => undefined);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [activePoll?.id, user?.id, screen, draftLoadedPollId, answers, resultPrivacy]);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "DALLYLETTER_OFFLINE_SUBMISSION_RESULT") return;
+      if (event.data.ok) { toast({ title: "Poll answers synced successfully" }); setScreen("list"); }
+      else toast({ variant: "destructive", title: "Queued poll needs attention", description: "The server rejected the saved answers. Reopen the poll and review them." });
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [user?.id]);
+
   async function handleSubmit() {
     if (timerRef.current) clearInterval(timerRef.current);
     if (!activePoll) return;
     setSubmitting(true);
     const answerArray = activePoll.questions.map(q => ({ questionId: q.id, optionId: answers[q.id] ?? -1 }));
     try {
+      const idempotencyKey = crypto.randomUUID();
       const r = await fetch(getApiUrl(`/api/polls/${activePoll.id}/submit`), {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}`, "Idempotency-Key": idempotencyKey },
         body: JSON.stringify({ answers: answerArray, resultPrivacy, selectedFriendIds }),
       });
-      if (r.status === 400) {
-        const d = await r.json() as { error: string };
-        if (d.error === "Already submitted") {
-          toast({ title: "You've already submitted this poll" });
-          setScreen("list");
-          return;
-        }
+      const data = await r.json().catch(() => ({})) as SubmitResult & { queued?: boolean; error?: string };
+      if (r.status === 400 && data.error === "Already submitted") {
+        toast({ title: "You've already submitted this poll" });
+        setScreen("list");
+        return;
       }
-      const data = await r.json() as SubmitResult;
+      if (r.status === 202 && data.queued) { toast({ title: "Saved offline", description: "Your poll answers are queued on this device. They are not submitted until the server confirms sync." }); return; }
+      if (!r.ok) throw new Error((data as any)?.error || "Poll submission failed");
+      if (user?.id) deleteOfflineDraft("poll:" + activePoll.id, token() || "", user.id);
       setResults(data);
       setScreen("results");
-    } catch {
-      toast({ variant: "destructive", title: "Submission failed" });
+    } catch (error) {
+      toast({ variant: "destructive", title: error instanceof Error ? error.message : "Submission failed" });
     } finally {
       setSubmitting(false);
     }

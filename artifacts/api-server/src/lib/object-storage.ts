@@ -138,3 +138,16 @@ export async function deleteObject(storageKey: string): Promise<void> {
   const response = await fetch(signed.url, { method: "DELETE", headers: signed.headers });
   if (!response.ok && response.status !== 404) throw new Error(`Object storage delete failed: HTTP ${response.status}`);
 }
+
+export async function putCloudObject(storageKey: string, mimeType: string, localPath: string): Promise<void> {
+  if (!config()) throw new Error("CLOUD_STORAGE_NOT_CONFIGURED");
+  await putObject("cloud/" + storageKey, mimeType, localPath);
+}
+export async function getCloudObject(storageKey: string, range?: string): Promise<Response | null> {
+  if (!config()) throw new Error("CLOUD_STORAGE_NOT_CONFIGURED");
+  return getObject("cloud/" + storageKey, range);
+}
+export async function deleteCloudObject(storageKey: string): Promise<void> {
+  if (!config()) throw new Error("CLOUD_STORAGE_NOT_CONFIGURED");
+  await deleteObject("cloud/" + storageKey);
+}

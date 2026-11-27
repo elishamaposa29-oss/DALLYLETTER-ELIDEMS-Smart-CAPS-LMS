@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import { sanitizeRichText } from "@/components/RichTextEditor";
 import { Badge } from "@/components/ui/badge";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import { useAuth } from "@/contexts/AuthContext";
+import { deleteOfflineDraft, listOfflineDrafts, saveOfflineDraft } from "@/lib/offline-drafts";
+import { uploadFileResumably } from "@/lib/resumable-upload";
 
 interface Question {
   id: number;
@@ -429,6 +432,7 @@ function DrawBox({
 }
 
 export default function StudentExercise() {
+  const { user } = useAuth();
   const [, params] = useRoute("/student/exercises/:id");
   const [, navigate] = useLocation();
   const id = params?.id;
@@ -441,11 +445,13 @@ export default function StudentExercise() {
   const [hiddenMedia, setHiddenMedia] = useState<Record<number, boolean>>({});
   const [confirmAttempt, setConfirmAttempt] = useState(false);
   const [newAttempt, setNewAttempt] = useState(false);
+  const [draftLoadedId, setDraftLoadedId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
     const token = localStorage.getItem("dallyletter_token");
     const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    setDraftLoadedId(null);
     Promise.all([
       fetch(getApiUrl(`/api/exercises/${id}`), { headers }).then(async (response) => {
         if (!response.ok) throw new Error("Exercise unavailable");
@@ -453,26 +459,52 @@ export default function StudentExercise() {
       }),
       fetch(getApiUrl(`/api/exercises/${id}/result`), { headers }).then(async (response) => response.ok ? response.json() : null).catch(() => null),
     ])
-      .then(([exerciseData, resultData]) => {
+      .then(async ([exerciseData, resultData]) => {
         setData(exerciseData);
         setResult(resultData);
-        if (resultData?.answers) {
-          setAnswers(Object.fromEntries(resultData.answers.map((answer: any) => [answer.questionId, {
-            textAnswer: answer.textAnswer ?? undefined,
-            selectedValue: answer.selectedValue ?? undefined,
-            drawData: answer.drawData ?? undefined,
-            mediaReference: answer.mediaReference ?? undefined,
-          }])));
+        let restoredAnswers = resultData?.answers ? Object.fromEntries(resultData.answers.map((answer: any) => [answer.questionId, {
+          textAnswer: answer.textAnswer ?? undefined,
+          selectedValue: answer.selectedValue ?? undefined,
+          drawData: answer.drawData ?? undefined,
+          mediaReference: answer.mediaReference ?? undefined,
+        }])) : {};
+        if (user?.id) {
+          try {
+            const drafts = await listOfflineDrafts<any>(localStorage.getItem("dallyletter_token") || "", user.id);
+            const draft = drafts.find(item => item.key === "exercise:" + exerciseData.exercise.id)?.value;
+            if (draft?.answers) { restoredAnswers = draft.answers; setNewAttempt(Boolean(draft.newAttempt)); }
+          } catch { /* Keep server result answers if offline storage is unavailable. */ }
         }
+        setAnswers(restoredAnswers);
+        setDraftLoadedId(Number(exerciseData.exercise.id));
       })
       .catch((cause) => setMessage(cause instanceof Error ? cause.message : "Exercise unavailable"));
-  }, [id]);
+  }, [id, user?.id]);
 
   const optionsByQuestion = useMemo(() => {
     const grouped: Record<string, Option[]> = {};
     for (const option of data?.options ?? []) (grouped[option.questionId] ??= []).push(option);
     return grouped;
   }, [data]);
+
+  useEffect(() => {
+    if (!data?.exercise?.id || !user?.id || draftLoadedId !== data.exercise.id) return;
+    const timer = window.setTimeout(() => {
+      void saveOfflineDraft("exercise:" + data.exercise.id, { answers, newAttempt }, localStorage.getItem("dallyletter_token") || "", user.id).catch(() => undefined);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [data?.exercise?.id, user?.id, draftLoadedId, answers, newAttempt]);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "DALLYLETTER_OFFLINE_SUBMISSION_RESULT") return;
+      if (event.data.ok) { setResult({ submission: { status: "submitted" }, answers: [] }); setNewAttempt(false); setMessage("Your queued exercise attempt has synced successfully."); }
+      else setMessage("The server rejected your queued attempt. Review your answers and submit again.");
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [user?.id]);
 
   const updateAnswer = (questionId: number, patch: Record<string, unknown>) => {
     setAnswers((current) => ({ ...current, [questionId]: { ...current[questionId], ...patch } }));
@@ -482,18 +514,11 @@ export default function StudentExercise() {
     setUploadingQuestion(questionId);
     setMessage("");
     try {
-      const token = localStorage.getItem("dallyletter_token");
-      const body = new FormData();
-      body.append("file", file);
-      const response = await fetch(getApiUrl("/api/exercises/answer-media"), {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body,
-      });
-      const payload = await response.json().catch(() => null) as { mediaUrl?: string; fileName?: string; error?: string } | null;
-      if (!response.ok || !payload?.mediaUrl) throw new Error(payload?.error || "Media upload failed");
-      updateAnswer(questionId, { mediaReference: payload.mediaUrl });
-      setMessage(`Attached ${payload.fileName || file.name} to Q${(data?.questions.findIndex((question) => question.id === questionId) ?? -1) + 1}.`);
+      const token = localStorage.getItem("dallyletter_token") || "";
+      if (!user?.id || !file.type) throw new Error("Sign in and select a file with a supported media type.");
+      const uploaded = await uploadFileResumably(file, token, user.id);
+      updateAnswer(questionId, { mediaReference: uploaded.mediaUrl });
+      setMessage(`Attached ${uploaded.fileName || file.name} to Q${(data?.questions.findIndex((question) => question.id === questionId) ?? -1) + 1}.`);
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "Media upload failed");
     } finally {
@@ -506,13 +531,18 @@ export default function StudentExercise() {
     setBusy(true);
     setMessage("");
     try {
-      const token = localStorage.getItem("dallyletter_token");
+      const token = localStorage.getItem("dallyletter_token") || "";
+      const idempotencyKey = crypto.randomUUID();
+      const submissionBody = { newAttempt, answers: Object.entries(answers).map(([questionId, answer]) => { const question = data.questions.find((item) => item.id === Number(questionId)); const teacherDrawing = question?.config?.teacherDrawing as DrawValue | undefined; return { questionId: Number(questionId), ...answer, ...(answer.drawData ? { drawData: { ...(answer.drawData as DrawValue), teacherDrawing: teacherDrawing ?? null, learnerDrawing: answer.drawData } } : {}) }; }) };
       const response = await fetch(getApiUrl(`/api/exercises/${data.exercise.id}/submit`), {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ newAttempt, answers: Object.entries(answers).map(([questionId, answer]) => { const question = data.questions.find((item) => item.id === Number(questionId)); const teacherDrawing = question?.config?.teacherDrawing as DrawValue | undefined; return { questionId: Number(questionId), ...answer, ...(answer.drawData ? { drawData: { ...(answer.drawData as DrawValue), teacherDrawing: teacherDrawing ?? null, learnerDrawing: answer.drawData } } : {}) }; }) }),
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify(submissionBody),
       });
-      if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || "Submission failed");
+      const responseBody = await response.json().catch(() => ({}));
+      if (response.status === 202 && responseBody?.queued) { setMessage("Saved offline. This attempt is queued on this device and is not submitted until the server confirms sync."); return; }
+      if (!response.ok) throw new Error(responseBody?.error || "Submission failed");
+      if (user?.id) deleteOfflineDraft("exercise:" + data.exercise.id, token, user.id);
       setResult({ submission: { status: "submitted" }, answers: [] });
       setNewAttempt(false);
       setMessage("Submitted. This attempt is complete. Start a new attempt when you are ready.");

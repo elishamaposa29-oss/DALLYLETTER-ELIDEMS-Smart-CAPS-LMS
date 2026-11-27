@@ -9,6 +9,7 @@ import { useColors } from "@/hooks/useColors";
 import AuthenticatedMediaPreview from "@/components/AuthenticatedMediaPreview";
 import { saveOfflineMediaForAccount } from "@/components/OfflineMediaDownload";
 import { useAuth } from "@/contexts/AuthContext";
+import { putOfflineLearningRecord } from "@/components/OfflineLearningStore";
 import { useEffect, useState } from "react";
 
 const LESSON_CACHE_KEY = "dallyletter_cached_lessons_v1";
@@ -185,6 +186,7 @@ export default function StudentLessons() {
     const safeSnapshot = lessons.map((lesson: any) => ({ ...lesson }));
     setCachedLessons(safeSnapshot);
     AsyncStorage.setItem(lessonCacheKey, JSON.stringify(safeSnapshot)).catch(() => undefined);
+    if (user?.id) void putOfflineLearningRecord(user.id, "lesson", "lesson-catalog", safeSnapshot).catch(() => undefined);
   }, [lessons, lessonCacheKey]);
 
   const displayedLessons = lessons?.length ? lessons : cachedLessons ?? [];

@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { enqueueSubmission, listQueuedSubmissions, removeQueuedSubmission, updateQueuedSubmission, type QueueStorage } from "../../dallyletter-mobile/components/QueuedSubmissionStoreCore.js";
+import { listOfflineLearningRecords, putOfflineLearningRecord, pruneOfflineLearningRecords } from "../../dallyletter-mobile/components/OfflineLearningStoreCore.js";
+import { contiguousUploadOffset, uploadIsComplete, validateUploadChunk } from "../src/lib/resumable-upload-core.js";
+import { classifyIdempotencyRecord, hashIdempotentRequest, isValidIdempotencyKey } from "../src/lib/idempotency-core.js";
+import { CLOUD_STORAGE_QUOTA_BYTES, isCloudStorageCategory, safeCloudFileName } from "../src/lib/cloud-storage-core.js";
 
 class MemoryStorage implements QueueStorage {
   values = new Map<string, string>();
@@ -21,32 +25,47 @@ test("queued submissions remain isolated by account", async () => {
   assert.equal((await listQueuedSubmissions(storage, 11)).length, 1);
 });
 
-test("re-enqueue replaces the pending payload for the same learning item", async () => {
+test("re-enqueueing the identical operation is deduplicated without changing its key", async () => {
   const storage = new MemoryStorage();
   await enqueueSubmission(storage, item(11, "draft 1"));
-  const rows = await enqueueSubmission(storage, item(11, "draft 2"));
+  const rows = await enqueueSubmission(storage, item(11, "draft 1"));
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].body, "draft 2");
+  assert.equal(rows[0].body, "draft 1");
   assert.equal(rows[0].attempts, 0);
-  assert.equal(rows[0].id, "assignment:42");
+  assert.equal(rows[0].idempotencyKey, rows[0].id);
+});
+
+test("a changed unsent payload is retained as a separate learner attempt", async () => {
+  const storage = new MemoryStorage();
+  await enqueueSubmission(storage, item(11, "first answer"));
+  const first = (await listQueuedSubmissions(storage, 11))[0];
+  const rows = await enqueueSubmission(storage, item(11, "second answer"));
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map(row => row.body), ["first answer", "second answer"]);
+  assert.notEqual(rows[0].idempotencyKey, rows[1].idempotencyKey);
+  assert.equal(rows[0].idempotencyKey, first.idempotencyKey);
+  assert.equal(rows[1].attempts, 0);
 });
 
 test("retry bookkeeping increments attempts and bounds error text", async () => {
   const storage = new MemoryStorage();
   await enqueueSubmission(storage, item(11, "answer"));
-  const rows = await updateQueuedSubmission(storage, 11, "assignment:42", "offline");
+  const stableKey = (await listQueuedSubmissions(storage, 11))[0].idempotencyKey;
+  const rows = await updateQueuedSubmission(storage, 11, (await listQueuedSubmissions(storage, 11))[0].id, "offline");
   assert.equal(rows[0].attempts, 1);
   assert.equal(rows[0].lastError, "offline");
-  const again = await updateQueuedSubmission(storage, 11, "assignment:42", "x".repeat(400));
+  assert.equal(rows[0].idempotencyKey, stableKey);
+  const again = await updateQueuedSubmission(storage, 11, (await listQueuedSubmissions(storage, 11))[0].id, "x".repeat(400));
   assert.equal(again[0].attempts, 2);
   assert.equal(again[0].lastError?.length, 300);
+  assert.equal(again[0].idempotencyKey, stableKey);
 });
 
 test("successful submission removal only changes the owning account queue", async () => {
   const storage = new MemoryStorage();
   await enqueueSubmission(storage, item(11, "A"));
   await enqueueSubmission(storage, item(22, "B"));
-  await removeQueuedSubmission(storage, 11, "assignment:42");
+  await removeQueuedSubmission(storage, 11, (await listQueuedSubmissions(storage, 11))[0].id);
   assert.equal((await listQueuedSubmissions(storage, 11)).length, 0);
   assert.equal((await listQueuedSubmissions(storage, 22))[0].body, "B");
 });
@@ -55,4 +74,137 @@ test("malformed stored data fails closed to an empty queue", async () => {
   const storage = new MemoryStorage();
   storage.values.set("dallyletter_pending_submissions_v1_user_11", "{not-json");
   assert.deepEqual(await listQueuedSubmissions(storage, 11), []);
+});
+
+test("offline learning records are isolated by account and retained for at least 90 days", async () => {
+  const storage = new MemoryStorage();
+  const now = 1_800_000_000_000;
+  await putOfflineLearningRecord(storage, 11, "draft", "draft-1", { text: "unfinished work" }, { now });
+  await putOfflineLearningRecord(storage, 22, "draft", "draft-1", { text: "another learner" }, { now });
+  assert.equal((await listOfflineLearningRecords(storage, 11, { now })).length, 1);
+  assert.equal((await listOfflineLearningRecords(storage, 22, { now }))[0].value.text, "another learner");
+  const retained = await listOfflineLearningRecords(storage, 11, { now: now + 90 * 24 * 60 * 60 * 1000 + 1 });
+  assert.equal(retained.length, 1);
+  assert.deepEqual(retained[0].value, { text: "unfinished work" });
+});
+
+test("unsynced drafts and learner work survive beyond the 90-day lesson-cache window", async () => {
+  const storage = new MemoryStorage();
+  const now = 1_800_000_000_000;
+  await putOfflineLearningRecord(storage, 11, "draft", "draft-long-lived", { text: "unfinished answer" }, { now });
+  await putOfflineLearningRecord(storage, 11, "learning", "event-long-lived", { text: "learner work" }, { now });
+  const later = now + 120 * 24 * 60 * 60 * 1000;
+  const rows = await listOfflineLearningRecords(storage, 11, { now: later });
+  assert.equal(rows.some(row => row.id === "draft-long-lived"), true);
+  assert.equal(rows.some(row => row.id === "event-long-lived"), true);
+});
+
+test("retention pruning removes expired cached lessons deterministically", async () => {
+  const storage = new MemoryStorage();
+  const now = 1_800_000_000_000;
+  await putOfflineLearningRecord(storage, 11, "lesson", "lesson-old", { text: "old" }, { now: now - 91 * 24 * 60 * 60 * 1000 });
+  await putOfflineLearningRecord(storage, 11, "lesson", "lesson-new", { text: "new" }, { now });
+  const rows = await pruneOfflineLearningRecords(storage, 11, { now });
+  assert.deepEqual(rows.map(row => row.id), ["lesson-new"]);
+});
+
+test("storage pressure evicts least-recently-used lesson cache before learner drafts", async () => {
+  const storage = new MemoryStorage();
+  const now = 1_800_000_000_000;
+  await putOfflineLearningRecord(storage, 11, "lesson", "lesson-old", "x".repeat(100), { now, maxBytes: 850 });
+  await putOfflineLearningRecord(storage, 11, "draft", "draft-keep", { text: "must survive" }, { now: now + 1, maxBytes: 850 });
+  await putOfflineLearningRecord(storage, 11, "learning", "event-1", "y".repeat(800), { now: now + 2, maxBytes: 850 });
+  const rows = await listOfflineLearningRecords(storage, 11, { now: now + 2 });
+  assert.equal(rows.some(row => row.id === "draft-keep"), true);
+  assert.equal(rows.some(row => row.id === "lesson-old"), false);
+});
+
+test("storage pressure refuses to discard drafts or learner events", async () => {
+  const storage = new MemoryStorage();
+  const now = 1_800_000_000_000;
+  await putOfflineLearningRecord(storage, 11, "draft", "draft-keep", "x".repeat(100), { now, maxBytes: 300 });
+  await assert.rejects(() => putOfflineLearningRecord(storage, 11, "learning", "event-2", "y".repeat(1000), { now: now + 1, maxBytes: 300 }), /storage is full/i);
+  assert.equal((await listOfflineLearningRecords(storage, 11, { now: now + 1 })).some(row => row.id === "draft-keep"), true);
+});
+
+test("resumable upload resumes at the first missing acknowledged byte offset", () => {
+  const received = [{ index: 0, offset: 0, size: 256 }, { index: 2, offset: 512, size: 256 }];
+  assert.equal(contiguousUploadOffset(received), 256);
+  assert.equal(uploadIsComplete(768, 256, received), false);
+});
+
+test("resumable upload accepts duplicate chunks only when their offset and size match", () => {
+  assert.equal(validateUploadChunk(600, 256, 0, 0, 256), true);
+  assert.equal(validateUploadChunk(600, 256, 2, 512, 88), true);
+  assert.equal(validateUploadChunk(600, 256, 2, 256, 88), false);
+  assert.equal(validateUploadChunk(600, 256, 2, 512, 256), false);
+});
+
+test("resumable upload completes only when every chunk is contiguous and correctly sized", () => {
+  assert.equal(uploadIsComplete(600, 256, [
+    { index: 0, offset: 0, size: 256 },
+    { index: 1, offset: 256, size: 256 },
+    { index: 2, offset: 512, size: 88 },
+  ]), true);
+  assert.equal(uploadIsComplete(600, 256, [
+    { index: 0, offset: 0, size: 256 },
+    { index: 2, offset: 512, size: 88 },
+  ]), false);
+});
+
+test("idempotency request fingerprints replay only the same method, route and payload", () => {
+  const body = { content: "same answer", fileUrl: null };
+  const first = hashIdempotentRequest("POST", "/api/assignments/42/submit", body);
+  assert.equal(hashIdempotentRequest("POST", "/api/assignments/42/submit", body), first);
+  assert.notEqual(hashIdempotentRequest("POST", "/api/assignments/43/submit", body), first);
+  assert.notEqual(hashIdempotentRequest("POST", "/api/assignments/42/submit", { ...body, content: "changed" }), first);
+  assert.notEqual(hashIdempotentRequest("PUT", "/api/assignments/42/submit", body), first);
+});
+
+test("idempotency keys reject empty, oversized and unsafe input", () => {
+  assert.equal(isValidIdempotencyKey("dl:stable-key_123"), true);
+  assert.equal(isValidIdempotencyKey(""), false);
+  assert.equal(isValidIdempotencyKey("x".repeat(201)), false);
+  assert.equal(isValidIdempotencyKey("bad key"), false);
+});
+
+test("outbox storage limits reject new work without discarding already queued submissions", async () => {
+  const storage = new MemoryStorage();
+  await enqueueSubmission(storage, item(11, "keep this pending answer"));
+  await assert.rejects(() => enqueueSubmission(storage, item(11, "x".repeat(5 * 1024 * 1024 + 100))), /storage is full/i);
+  const rows = await listQueuedSubmissions(storage, 11);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].body, "keep this pending answer");
+});
+
+test("duplicate delivery replays the stored acknowledgement without executing the operation again", () => {
+  const body = { content: "learner response" };
+  const requestHash = hashIdempotentRequest("POST", "/api/assignments/42/submit", body);
+  const stored = { requestHash, state: "complete" as const, responseStatus: 201, responseBody: { id: 99, status: "submitted" } };
+  let executions = 1;
+  const retry = classifyIdempotencyRecord(stored, requestHash);
+  if (retry.kind !== "replay") executions += 1;
+  assert.equal(retry.kind, "replay");
+  if (retry.kind === "replay") {
+    assert.equal(retry.status, 201);
+    assert.deepEqual(retry.body, stored.responseBody);
+  }
+  assert.equal(executions, 1);
+});
+
+test("a concurrent duplicate remains pending and a changed payload conflicts", () => {
+  const hash = hashIdempotentRequest("POST", "/api/messages", { content: "hello" });
+  const pending = classifyIdempotencyRecord({ requestHash: hash, state: "pending", responseStatus: null, responseBody: null }, hash);
+  assert.equal(pending.kind, "pending");
+  const changed = classifyIdempotencyRecord({ requestHash: hash, state: "complete", responseStatus: 201, responseBody: {} }, hashIdempotentRequest("POST", "/api/messages", { content: "edited" }));
+  assert.equal(changed.kind, "conflict");
+});
+
+test("per-user cloud storage allowance is 10 GiB and resource categories cover learner work", () => {
+  assert.equal(CLOUD_STORAGE_QUOTA_BYTES, 10 * 1024 * 1024 * 1024);
+  for (const category of ["video","lesson","assignment","exercise","study_group","message","document","other"]) {
+    assert.equal(isCloudStorageCategory(category), true);
+  }
+  assert.equal(isCloudStorageCategory("another-user-private"), false);
+  assert.equal(safeCloudFileName("../../private\0answer.pdf"), ".._.._private_answer.pdf");
 });

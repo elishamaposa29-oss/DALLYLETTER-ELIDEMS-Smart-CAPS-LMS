@@ -10,6 +10,6 @@ import {
 export type { QueuedSubmission } from "./QueuedSubmissionStoreCore";
 
 export const listQueuedSubmissions = (userId: number) => list(AsyncStorage, userId);
-export const enqueueSubmission = (item: Omit<QueuedSubmission, "id" | "createdAt" | "attempts">) => enqueue(AsyncStorage, item);
+export const enqueueSubmission = (item: Omit<QueuedSubmission, "id" | "idempotencyKey" | "createdAt" | "attempts"> & { idempotencyKey?: string }) => enqueue(AsyncStorage, item);
 export const removeQueuedSubmission = (userId: number, id: string) => remove(AsyncStorage, userId, id);
 export const updateQueuedSubmission = (userId: number, id: string, error: string) => update(AsyncStorage, userId, id, error);

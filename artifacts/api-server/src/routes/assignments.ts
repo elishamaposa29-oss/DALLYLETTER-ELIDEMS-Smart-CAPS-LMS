@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { idempotencyMiddleware } from "../lib/idempotency";
 import multer from "multer";
 import { db, notificationsTable, auditLogsTable } from "@workspace/db";
 import { assignmentsTable, assignmentSubmissionsTable } from "@workspace/db/schema";
@@ -12,7 +13,7 @@ import { getAIProvider } from "../lib/ai-provider";
 import { isObjectStorageConfigured } from "../lib/object-storage";
 import { logger } from "../lib/logger";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, isCloudQuotaExceeded, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
 const materialUpload = multer({
@@ -62,7 +63,8 @@ router.post("/material", requireAuth, (req, res): void => {
     if (error) { res.status(400).json({ error: "A supported material file up to 250 MB is required" }); return; }
     const file = req.file;
     if (!file) { res.status(400).json({ error: "A supported material file is required" }); return; }
-    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
+    persistUploadedMedia(file.filename, file.mimetype, file.path, { userId: Number(req.currentUser!.id), category: "assignment", fileName: file.originalname }).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
+      if (isCloudQuotaExceeded(error)) { res.status(413).json({ code: "CLOUD_QUOTA_EXCEEDED", error: error instanceof Error ? error.message.split(":").slice(1).join(":").trim() : "Cloud storage quota exceeded" }); return; }
       logger.error({
         error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
         persistentStorageConfigured: isObjectStorageConfigured(),
@@ -83,7 +85,8 @@ router.post("/submission-material", requireAuth, (req, res): void => {
     if (error) { res.status(400).json({ error: "A supported submission file up to 250 MB is required" }); return; }
     const file = req.file;
     if (!file) { res.status(400).json({ error: "A supported submission file is required" }); return; }
-    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
+    persistUploadedMedia(file.filename, file.mimetype, file.path, { userId: Number(req.currentUser!.id), category: "assignment", fileName: file.originalname }).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
+      if (isCloudQuotaExceeded(error)) { res.status(413).json({ code: "CLOUD_QUOTA_EXCEEDED", error: error instanceof Error ? error.message.split(":").slice(1).join(":").trim() : "Cloud storage quota exceeded" }); return; }
       logger.error({
         error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
         persistentStorageConfigured: isObjectStorageConfigured(),
@@ -262,7 +265,7 @@ router.get("/:id/submissions", requireAuth, requireManagerPermissionIfManager("r
   res.json(subs);
 });
 
-router.post("/:id/submit", requireAuth, async (req, res): Promise<void> => {
+router.post("/:id/submit", requireAuth, idempotencyMiddleware, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Forbidden" }); return; }
   const assignmentId = parseInt(String(req.params.id));

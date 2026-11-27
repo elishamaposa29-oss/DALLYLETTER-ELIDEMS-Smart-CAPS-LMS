@@ -21,6 +21,7 @@ import { z } from "zod";
 import { CreateLessonBodyType } from "@workspace/api-client-react";
 import { ExerciseBuilderPanel } from "@/components/exercises/ExerciseBuilderPanel";
 import { RichTextEditor, sanitizeRichText } from "@/components/RichTextEditor";
+import { uploadFileResumably } from "@/lib/resumable-upload";
 
 const createLessonSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -159,34 +160,23 @@ export default function TeacherLessons() {
       toast({ variant: "destructive", title: "Unsupported media", description: `Choose a supported ${selectedLessonType} file.` });
       return;
     }
+    if (!user?.id || !file.type) {
+      toast({ variant: "destructive", title: "Sign in before uploading lesson media." });
+      return;
+    }
     const previewUrl = URL.createObjectURL(file);
     setUploadedFile({ name: file.name, previewUrl, mimeType: file.type });
     setUploadProgress(0);
-    const request = new XMLHttpRequest();
-    request.open("POST", getApiUrl("/api/lessons/media"));
-    const token = localStorage.getItem("dallyletter_token");
-    if (token) request.setRequestHeader("Authorization", `Bearer ${token}`);
-    request.upload.onprogress = (event) => {
-      if (event.lengthComputable) setUploadProgress(Math.round((event.loaded / event.total) * 100));
-    };
-    request.onload = () => {
-      if (request.status < 200 || request.status >= 300) {
+    void uploadFileResumably(file, localStorage.getItem("dallyletter_token") || "", user.id, progress => setUploadProgress(progress.percent))
+      .then(result => {
+        form.setValue("mediaUrl", result.mediaUrl, { shouldValidate: true });
+        setUploadProgress(100);
+        toast({ title: "Lesson media uploaded", description: "Preview it below, then publish the lesson." });
+      })
+      .catch(error => {
         setUploadProgress(null);
-        toast({ variant: "destructive", title: "Upload failed", description: "The video could not be uploaded." });
-        return;
-      }
-      const result = JSON.parse(request.responseText) as { mediaUrl: string };
-      form.setValue("mediaUrl", result.mediaUrl, { shouldValidate: true });
-      setUploadProgress(100);
-      toast({ title: "Video uploaded", description: "Preview it below, then publish the lesson." });
-    };
-    request.onerror = () => {
-      setUploadProgress(null);
-      toast({ variant: "destructive", title: "Upload failed", description: "Check your connection and try again." });
-    };
-    const formData = new FormData();
-    formData.append("file", file);
-    request.send(formData);
+        toast({ variant: "destructive", title: "Upload interrupted", description: error instanceof Error ? error.message : "Reconnect and retry the upload." });
+      });
   };
 
   const removeUploadedVideo = () => {
@@ -508,6 +498,7 @@ export default function TeacherLessons() {
                     <CardContent className="border-t pt-4">
                       <ExerciseBuilderPanel
                         lessonId={lesson.id}
+                        userId={user?.id}
                         onSaved={() => queryClient.invalidateQueries({ queryKey: getListLessonsQueryKey() })}
                       />
                     </CardContent>

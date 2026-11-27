@@ -11,8 +11,9 @@ import {
   SendMessageBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
+import { idempotencyMiddleware } from "../lib/idempotency";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, persistUploadedMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, persistUploadedMedia, isCloudQuotaExceeded, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole, canAccessManager } from "../lib/auth-middleware";
@@ -147,14 +148,15 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         }
       }
 
-      await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path);
+      await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path, { userId: Number(currentUser.id), category: groupId != null ? "study_group" : "message", fileName: req.file.originalname });
       res.status(201).json({
         mediaUrl: messageMediaPath(req.file.filename) + "?type=" + encodeURIComponent(req.file.mimetype),
         storageKey: req.file.filename,
         mimeType: req.file.mimetype,
         size: req.file.size,
       });
-    })().catch(() => {
+    })().catch((error) => {
+      if (isCloudQuotaExceeded(error)) { res.status(413).json({ code: "CLOUD_QUOTA_EXCEEDED", error: "Your 10 GiB cloud storage allowance is full." }); return; }
       res.status(500).json({ error: "Media upload failed" });
     });
   });
@@ -379,7 +381,7 @@ router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
   res.status(200).json({ ok: true, deleted: true });
 });
 
-router.post("/messages", requireAuth, async (req, res): Promise<void> => {
+router.post("/messages", requireAuth, idempotencyMiddleware, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
 
   const parsed = SendMessageBody.safeParse(req.body);

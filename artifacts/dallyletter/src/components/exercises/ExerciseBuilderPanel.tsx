@@ -7,10 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getApiUrl } from "@workspace/api-client-react";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { uploadFileResumably } from "@/lib/resumable-upload";
 
 interface PollOption { id:string; label:string; value:string; isCorrect:boolean }
 interface ExerciseQuestionDraft { id:string; prompt:string; type:"input"|"poll"|"drawbox"; marks:number; options:PollOption[]; width:number; height:number; x:number; y:number; drawData?:Record<string,unknown>; drawPermissions?:{preview:boolean;allowClear:boolean;allowModify:boolean;allowRewrite:boolean}; attachment?:{url?:string;previewUrl?:string;file?:File;fileName:string;mimeType?:string} }
-interface ExerciseBuilderPanelProps { lessonId:number; onSaved?:()=>void; onClose?:()=>void }
+interface ExerciseBuilderPanelProps { lessonId:number; userId?:number; onSaved?:()=>void; onClose?:()=>void }
 interface AIReadiness { provider:string; configured:boolean; canMark:boolean; clarifications:string[]; reason?:string|null }
 
 function distanceToDrawingSegment(point:{x:number;y:number},item:Record<string,unknown>){const x1=Number(item.px??item.x??0),y1=Number(item.py??item.y??0),x2=Number(item.x??x1),y2=Number(item.y??y1),dx=x2-x1,dy=y2-y1,len=dx*dx+dy*dy,t=len===0?0:Math.max(0,Math.min(1,((point.x-x1)*dx+(point.y-y1)*dy)/len));return Math.hypot(point.x-(x1+t*dx),point.y-(y1+t*dy));}
@@ -32,7 +33,7 @@ function TeacherDrawboxSetup({value,onChange,permissions,onPermissionsChange}:{v
  return <div className={fullScreen?"fixed inset-2 z-[100] overflow-auto rounded-xl border-2 border-[#D4AF37] bg-background p-3 shadow-2xl sm:inset-4":"mt-3 space-y-2 rounded-xl border border-[#D4AF37]/40 bg-[#0A1931]/5 p-3"}><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wide text-[#8A6D1D]">Teacher drawing workspace</span><div className="flex flex-wrap gap-1"><Button type="button" size="sm" variant="outline" onClick={()=>setMagnify(v=>Math.max(0.5,Math.round((v-0.25)*100)/100))} aria-label="Zoom out">−</Button><span className="self-center px-1 text-xs">{Math.round(magnify*100)}%</span><Button type="button" size="sm" variant="outline" onClick={()=>setMagnify(v=>Math.min(2.5,Math.round((v+0.25)*100)/100))} aria-label="Zoom in">+</Button><Button type="button" size="sm" variant="outline" onClick={()=>setFullScreen(v=>!v)}><Maximize2 className="mr-1 h-4 w-4"/>{fullScreen?"Exit full screen":"Full screen"}</Button><Button type="button" size="sm" variant="outline" onClick={()=>onChange({strokes:[],paintStrokes:[],labels:[],pointers:[]})}>Clear drawing</Button></div></div><div className="flex flex-wrap items-center gap-1 rounded-lg border bg-background p-1.5">{(["pen","paint","eraser","text","pointer"] as const).map(item=><Button key={item} type="button" size="icon" variant={tool===item?"default":"outline"} title={item} aria-label={item} onClick={()=>setTool(item)}>{item==="pen"?"✎":item==="paint"?"🖌️":item==="eraser"?"⌫":item==="text"?"T":"➤"}</Button>)}<input type="color" value={color} onChange={e=>setColor(e.target.value)} className="h-8 w-9"/><input type="range" min="1" max="24" value={width} onChange={e=>setWidth(Number(e.target.value))}/>{tool==="text"&&<Input value={label} onChange={e=>setLabel(e.target.value)} placeholder="Text / word art…"/>}</div><canvas width="1200" height="700" ref={el=>{canvasRef.current=el;draw(el)}} style={{transform:`scale(${magnify})`,transformOrigin:"top left",width:`${100/magnify}%`}} className={fullScreen?"min-h-[70vh] w-full touch-none rounded-lg border bg-[#FFF8E1]":"h-64 w-full touch-none rounded-lg border bg-[#FFF8E1]"} onPointerDown={down} onPointerMove={move} onPointerUp={()=>{setDrawing(false);setLast(null);pointerId.current=null;pointerOrigin.current=null}} onPointerCancel={()=>{setDrawing(false);setLast(null);pointerId.current=null;pointerOrigin.current=null}}/><div className="grid gap-2 sm:grid-cols-2"><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={permissions.preview} onChange={e=>onPermissionsChange({...permissions,preview:e.target.checked})}/> Preview my drawing to learners</label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={permissions.allowModify} onChange={e=>onPermissionsChange({...permissions,allowModify:e.target.checked})}/> Allow learner to modify / write over</label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={permissions.allowRewrite} onChange={e=>onPermissionsChange({...permissions,allowRewrite:e.target.checked})}/> Allow learner to rewrite / override</label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={permissions.allowClear} onChange={e=>onPermissionsChange({...permissions,allowClear:e.target.checked})}/> Allow learner to clear teacher drawing</label></div></div>
 }
 
-export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderPanelProps){
+export function ExerciseBuilderPanel({lessonId,userId,onSaved,onClose}:ExerciseBuilderPanelProps){
  const [title,setTitle]=useState("");const [instructions,setInstructions]=useState("");const [totalMarks,setTotalMarks]=useState("0");const [questions,setQuestions]=useState<ExerciseQuestionDraft[]>([]);
  const [recordForReport,setRecordForReport]=useState(true);const [existingExerciseCount,setExistingExerciseCount]=useState<number|null>(null);
  useEffect(()=>{let active=true;const token=localStorage.getItem("dallyletter_token");const headers:HeadersInit=token?{Authorization:`Bearer ${token}`}:{};void fetch(getApiUrl(`/api/exercises/lessons/${lessonId}/exercises`),{headers}).then(async r=>r.ok?r.json():null).then(data=>{if(active&&Array.isArray(data))setExistingExerciseCount(data.filter((item:any)=>item.status!=="archived").length);}).catch(()=>undefined);return()=>{active=false};},[lessonId]);
@@ -50,12 +51,16 @@ export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderP
  };
  const persistQuestionAttachment=async(exerciseId:number,questionId:number,attachment:ExerciseQuestionDraft["attachment"],questionNumber:number)=>{
    if(!attachment?.file)return attachment?.url?attachment:null;
-   const token=localStorage.getItem("dallyletter_token");const body=new FormData();body.append("file",attachment.file);body.append("exerciseId",String(exerciseId));body.append("questionId",String(questionId));
-   const r=await fetch(getApiUrl("/api/exercises/question-media"),{method:"POST",headers:token?{Authorization:"Bearer "+token}:{},body});
-   const data=await r.json().catch(()=>null) as {attachmentUrl?:string;fileName?:string;mimeType?:string;error?:string}|null;
-   if(!r.ok||!data?.attachmentUrl)throw new Error(`Question ${questionNumber} media upload failed${attachment.fileName?` (${attachment.fileName})`:""}: ${data?.error||"unsupported or unavailable media storage"}`);
-   if(attachment.previewUrl)URL.revokeObjectURL(attachment.previewUrl);
-   return {url:data.attachmentUrl,fileName:data.fileName||attachment.fileName,mimeType:data.mimeType||attachment.mimeType};
+   const token=localStorage.getItem("dallyletter_token")||"";
+   if(!userId||!attachment.file.type)throw new Error("Sign in and select a supported question attachment.");
+   try {
+     const uploaded=await uploadFileResumably(attachment.file,token,userId);
+     if(attachment.previewUrl)URL.revokeObjectURL(attachment.previewUrl);
+     return {url:uploaded.mediaUrl,fileName:uploaded.fileName||attachment.fileName,mimeType:attachment.mimeType||attachment.file.type};
+   } catch(error) {
+     const detail=error instanceof Error?error.message:"unsupported or unavailable media storage";
+     throw new Error("Question "+questionNumber+" media upload failed"+(attachment.fileName?" ("+attachment.fileName+")":"")+": "+detail);
+   }
  };
  const moveQuestion=(from:number,to:number)=>setQuestions(c=>{if(to<0||to>=c.length||from===to)return c;const next=[...c];const [item]=next.splice(from,1);next.splice(to,0,item);return next.map((q,i)=>({...q,position:i} as ExerciseQuestionDraft));});
  const updatePosition=(id:string,x:number,y:number)=>setQuestions(c=>c.map(q=>q.id===id?{...q,x:Math.max(0,Math.min(90,x)),y:Math.max(0,Math.min(3000,y))}:q));

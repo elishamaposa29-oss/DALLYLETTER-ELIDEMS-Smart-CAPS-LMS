@@ -11,6 +11,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
 type ChatGroup = { id: number; name: string; description?: string | null; subject?: string; creatorName?: string; memberCount?: number; createdAt?: string; isMember?: boolean; settings?: { allowPolls?: boolean }; members?: Array<{ id: number; name?: string; role?: string; isPrefect?: boolean }> };
 import { useAuth } from "@/contexts/AuthContext";
+import { createSubmissionIdempotencyKey } from "@/components/QueuedSubmissionStoreCore";
+import { listOfflineLearningRecords, putOfflineLearningRecord, removeOfflineLearningRecord } from "@/components/OfflineLearningStore";
 import { UserProfileLink } from "@/components/UserProfileLink";
 import { useColors } from "@/hooks/useColors";
 
@@ -19,6 +21,7 @@ export default function StudentChat() {
   const insets = useSafeAreaInsets();
   const { user, token } = useAuth();
   const [text, setText] = useState("");
+  const [offlineMessages, setOfflineMessages] = useState<any[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [notice, setNotice] = useState("");
   const [unreadGroups, setUnreadGroups] = useState<Array<{id:number;unread:number}>>([]);
@@ -45,10 +48,39 @@ export default function StudentChat() {
   const [queuedMessages, setQueuedMessages] = useState<any[]>([]);
   const [retrySignal, setRetrySignal] = useState(0);
   const queueKey = user?.id ? "dallyletter_mobile_chat_outbox_user_" + user.id : null;
+  useEffect(() => {
+    if (!user?.id || selectedGroupId == null) return;
+    setText("");
+    let active = true;
+    void listOfflineLearningRecords(user.id).then(rows => {
+      const draft = rows.find(row => row.kind === "draft" && row.id === "chat:" + selectedGroupId);
+      if (active && draft && typeof (draft.value as any)?.text === "string") setText((draft.value as any).text);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [user?.id, selectedGroupId]);
+  useEffect(() => {
+    if (!user?.id || selectedGroupId == null || !text.trim()) return;
+    const timer = setTimeout(() => { void putOfflineLearningRecord(user.id, "draft", "chat:" + selectedGroupId, { text }).catch(() => undefined); }, 350);
+    return () => clearTimeout(timer);
+  }, [user?.id, selectedGroupId, text]);
   useEffect(() => { let active=true; if (!queueKey) { setQueuedMessages([]); return; } void AsyncStorage.getItem(queueKey).then(raw => { if(active && raw) setQueuedMessages(JSON.parse(raw)); }).catch(() => {}); return () => { active=false; }; }, [queueKey]);
   useEffect(() => { const sub=AppState.addEventListener("change", state => { if(state==="active") setRetrySignal(v=>v+1); }); return () => sub.remove(); }, []);
   useEffect(() => { if (queuedMessages.length === 0) return; const timer=setInterval(() => { if(AppState.currentState==="active") setRetrySignal(v=>v+1); }, 30000); return () => clearInterval(timer); }, [queuedMessages.length]);
   const { data: messages, refetch } = useListMessages({ groupId: selectedGroupId }, { query: { enabled: selectedGroupId != null, refetchInterval: 5000 } as any });
+  useEffect(() => {
+    if (!user?.id || selectedGroupId == null) { setOfflineMessages([]); return; }
+    let active = true;
+    void listOfflineLearningRecords(user.id).then(rows => {
+      const cached = rows.find(row => row.kind === "message" && row.id === "group:" + selectedGroupId);
+      if (active && Array.isArray(cached?.value)) setOfflineMessages(cached.value);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [user?.id, selectedGroupId]);
+  useEffect(() => {
+    if (!user?.id || selectedGroupId == null || !Array.isArray(messages)) return;
+    setOfflineMessages(messages);
+    void putOfflineLearningRecord(user.id, "message", "group:" + selectedGroupId, messages).catch(() => undefined);
+  }, [user?.id, selectedGroupId, messages]);
   const sendMutation = useSendMessage({
     mutation: {
       onSuccess: () => {
@@ -61,8 +93,10 @@ export default function StudentChat() {
   useEffect(() => { if (joinedGroups.length > 0 && !joinedGroups.some(group => group.id === selectedGroupId)) setSelectedGroupId(joinedGroups[0].id); }, [joinedGroups, selectedGroupId]);
 
   const persistQueue = async (next: any[]) => {
+    const serialized = JSON.stringify(next);
+    if (next.length > 100 || new TextEncoder().encode(serialized).byteLength > 2 * 1024 * 1024) throw new Error("Offline message storage is full. Reconnect and sync pending messages before adding more.");
+    if (queueKey) await AsyncStorage.setItem(queueKey, serialized);
     setQueuedMessages(next);
-    if (queueKey) await AsyncStorage.setItem(queueKey, JSON.stringify(next)).catch(() => {});
   };
 
   useEffect(() => {
@@ -74,7 +108,7 @@ export default function StudentChat() {
         const item = remaining[0];
         try {
           if (!Number.isSafeInteger(item.groupId) || item.groupId <= 0) { if (!cancelled) setNotice("An older offline message has no saved group destination. It was not sent to the wrong conversation."); break; }
-          await sendMutation.mutateAsync({ data: { content: item.content, type: "text", groupId: item.groupId } });
+          await sendMutation.mutateAsync({ data: { content: item.content, type: "text", groupId: item.groupId, idempotencyKey: item.idempotencyKey || item.id } as any });
           remaining.shift();
           if (!cancelled) await persistQueue([...remaining]);
         } catch {
@@ -93,14 +127,17 @@ export default function StudentChat() {
     if (!content || !user) return;
     if (selectedGroupId == null) { setNotice("Join a study group before sending a group message."); return; }
     setNotice("");
+    const idempotencyKey = createSubmissionIdempotencyKey();
     try {
-      await sendMutation.mutateAsync({ data: { content, type: "text", groupId: selectedGroupId } });
+      await sendMutation.mutateAsync({ data: { content, type: "text", groupId: selectedGroupId, idempotencyKey } as any });
+      if (user?.id) await removeOfflineLearningRecord(user.id, "draft", "chat:" + selectedGroupId);
       setText("");
     } catch (error) {
       const status = (error as { status?: number })?.status;
       if (!status && queueKey) {
-        const item = { id: "queued-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8), content, groupId: selectedGroupId, createdAt: new Date().toISOString(), senderId: user.id, senderName: user.name, queued: true };
+        const item = { id: "queued-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8), idempotencyKey, content, groupId: selectedGroupId, createdAt: new Date().toISOString(), senderId: user.id, senderName: user.name, queued: true };
         await persistQueue([...queuedMessages, item]);
+        if (user?.id) await removeOfflineLearningRecord(user.id, "draft", "chat:" + selectedGroupId);
         setText("");
         setNotice("Message saved offline. It will retry for the selected group when the connection returns.");
       } else {

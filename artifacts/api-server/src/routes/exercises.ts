@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { idempotencyMiddleware } from "../lib/idempotency";
 import multer from "multer";
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
@@ -12,7 +13,7 @@ import { managerHasPermission, requireManagerPermissionIfManager } from "../lib/
 import { getAIProvider } from "../lib/ai-provider";
 import { hasContentPermission } from "../lib/content-permissions";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, isCloudQuotaExceeded, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
 const learnerRole = "student";
@@ -48,7 +49,7 @@ router.post("/answer-media", requireAuth, (req,res):void => {
     if (error) { res.status(400).json({error:"A supported answer file is required"}); return; }
     if (!req.file) { res.status(400).json({error:"A supported answer file is required"}); return; }
     const file = req.file;
-    void persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+    void persistUploadedMedia(file.filename, file.mimetype, file.path, { userId: Number(req.currentUser!.id), category: "exercise", fileName: file.originalname }).then(() => {
       if (res.headersSent) return;
       res.status(201).json({
         mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
@@ -57,9 +58,10 @@ router.post("/answer-media", requireAuth, (req,res):void => {
         mimeType: file.mimetype,
         size: file.size,
       });
-    }).catch(async () => {
+    }).catch(async (error) => {
       const { unlink } = await import("node:fs/promises");
       await unlink(file.path).catch(() => undefined);
+      if (!res.headersSent && isCloudQuotaExceeded(error)) { res.status(413).json({code:"CLOUD_QUOTA_EXCEEDED",error:"Your 10 GiB cloud storage allowance is full."}); return; }
       if (!res.headersSent) res.status(503).json({error:"Persistent media storage is unavailable. Configure durable object storage and retry."});
     });
   });
@@ -110,16 +112,17 @@ router.post("/question-media", requireAuth, requireManagerPermissionIfManager("u
       const attachmentUrl = `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`;
       let mediaPersisted = false;
       try {
-        await persistUploadedMedia(file.filename, file.mimetype, file.path);
+        await persistUploadedMedia(file.filename, file.mimetype, file.path, { userId: Number(user.id), category: "exercise", fileName: file.originalname });
         mediaPersisted = true;
         const [updatedQuestion] = await db.update(exerciseQuestionsTable)
           .set({ config: { ...config, attachment: { url: attachmentUrl, fileName: file.originalname, mimeType: file.mimetype, size: file.size } } })
           .where(and(eq(exerciseQuestionsTable.id, question.id), eq(exerciseQuestionsTable.exerciseId, exerciseId)))
           .returning({ id: exerciseQuestionsTable.id });
         if (!updatedQuestion) throw new Error("Question attachment target disappeared before save");
-      } catch {
+      } catch (error) {
         if (mediaPersisted) await removeStoredMedia(file.filename).catch(() => undefined);
         else await discardTemporaryFile();
+        if (isCloudQuotaExceeded(error)) { res.status(413).json({code:"CLOUD_QUOTA_EXCEEDED",error:"Your 10 GiB cloud storage allowance is full."}); return; }
         res.status(503).json({error:"Persistent media storage is unavailable or the attachment could not be saved. Please retry."});
         return;
       }
@@ -327,7 +330,7 @@ router.post("/:id/ai-marking/:submissionId/run",requireAuth,requireManagerPermis
   }catch(err){res.status(502).json({error:err instanceof Error?err.message:"AI marking failed",provider:ai.name});}
 });
 
-router.post("/:id/submit",requireAuth,async(req,res):Promise<void>=>{
+router.post("/:id/submit",requireAuth,idempotencyMiddleware,async(req,res):Promise<void>=>{
   const user=req.currentUser!;if(user.role!==learnerRole){res.status(403).json({error:"Student access required"});return;}
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise||exercise.status!=="published"){res.status(404).json({error:"Exercise not found"});return;}

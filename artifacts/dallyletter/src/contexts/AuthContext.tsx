@@ -16,7 +16,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem("dallyletter_token"));
-  const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [sessionUser, setSessionUser] = useState<User | null>(() => {
+    try {
+      const cached = localStorage.getItem("dallyletter_user");
+      return cached ? JSON.parse(cached) as User : null;
+    } catch { return null; }
+  });
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
@@ -62,16 +67,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [sessionUser, fetchedUser, queryClient]);
 
   useEffect(() => {
+    const accountId = sessionUser?.id ?? fetchedUser?.id;
+    if (!token || !accountId) return;
+    const replay = () => { void navigator.serviceWorker?.ready.then(registration => (navigator.serviceWorker.controller || registration.active)?.postMessage({ type: "DALLYLETTER_REPLAY_OFFLINE_OUTBOX", authorization: "Bearer " + token, userId: accountId })).catch(() => undefined); };
+    replay();
+    const onWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type === "DALLYLETTER_OFFLINE_SYNC_REQUIRED") replay();
+    };
+    window.addEventListener("online", replay);
+    navigator.serviceWorker?.addEventListener("message", onWorkerMessage);
+    navigator.serviceWorker?.ready.then(replay).catch(() => undefined);
+    return () => {
+      window.removeEventListener("online", replay);
+      navigator.serviceWorker?.removeEventListener("message", onWorkerMessage);
+    };
+  }, [token, sessionUser?.id, fetchedUser?.id]);
+
+  useEffect(() => {
     if (!token || !error) return;
     const message = error instanceof Error ? error.message : String(error);
     const status = Number((error as any)?.status ?? (error as any)?.statusCode ?? (error as any)?.response?.status ?? 0);
     if (status === 401 || status === 403 || /401|403|unauthorized|forbidden|authentication required/i.test(message)) {
       queryClient.clear();
       setSessionUser(null);
+      localStorage.removeItem("dallyletter_user");
+      navigator.serviceWorker?.controller?.postMessage({ type: "DALLYLETTER_CLEAR_PRIVATE_OFFLINE_CACHE" });
       setToken(null);
       setLocation("/login");
     }
   }, [token, error, sessionUser, setLocation, queryClient]);
+
+  useEffect(() => {
+    const currentUser = sessionUser ?? fetchedUser;
+    if (currentUser) localStorage.setItem("dallyletter_user", JSON.stringify(currentUser));
+  }, [sessionUser, fetchedUser]);
 
   useEffect(() => {
     if (token) {
@@ -107,6 +136,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (token) void fetch(getApiUrl("/api/auth/logout"), { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(() => undefined);
     queryClient.clear();
     setSessionUser(null);
+    localStorage.removeItem("dallyletter_user");
+    navigator.serviceWorker?.controller?.postMessage({ type: "DALLYLETTER_CLEAR_PRIVATE_OFFLINE_CACHE" });
     setToken(null);
     setLocation("/login");
   };
@@ -116,6 +147,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (event.key !== "dallyletter_token") return;
       queryClient.clear();
       setSessionUser(null);
+      localStorage.removeItem("dallyletter_user");
+      navigator.serviceWorker?.controller?.postMessage({ type: "DALLYLETTER_CLEAR_PRIVATE_OFFLINE_CACHE" });
       setToken(event.newValue);
       if (!event.newValue) setLocation("/login");
     };

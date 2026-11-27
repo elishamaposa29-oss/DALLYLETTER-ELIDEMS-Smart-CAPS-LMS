@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import { uploadFileResumably } from "@/lib/resumable-upload";
 
 interface Poll { id: number; title: string; topic: string | null; type: string; grade: string | null; subject: string | null; mode: string; status: string; createdAt: string; }
 interface PollQuestion { id: number; question: string; difficulty: string; explanation: string; imageUrl?: string | null; options: { id: number; text: string; isCorrect?: boolean }[]; }
@@ -57,12 +58,9 @@ export default function AdminPolls() {
   }, [user?.role]);
 
   async function uploadQuestionImage(index: number, file: File) {
-    const body = new FormData();
-    body.append("file", file, file.name);
-    const r = await fetch(getApiUrl("/api/lessons/media"), { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body });
-    const payload = await r.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
-    if (!r.ok || !payload?.mediaUrl) throw new Error(payload?.error ?? "Question image upload failed");
-    setNewQuestions(qs => qs.map((q, i) => i === index ? { ...q, imageUrl: payload.mediaUrl! } : q));
+    if (!user?.id || !file.type) throw new Error("Sign in and select a supported image file.");
+    const uploaded = await uploadFileResumably(file, token() || "", user.id);
+    setNewQuestions(qs => qs.map((q, i) => i === index ? { ...q, imageUrl: uploaded.mediaUrl } : q));
   }
 
   async function handleCreate() {

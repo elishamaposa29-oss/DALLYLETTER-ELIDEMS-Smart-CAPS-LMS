@@ -36,11 +36,19 @@ export default function AuthenticatedMediaPreview({ url, height = 220, accessibi
   const label = accessibilityLabel || (isImage ? "Attached image" : "Attached media");
   const looksVideo = /video|\.(mp4|m4v|mov|webm|ogv)(?:[?#].*)?$/i.test(url);
   const looksAudio = /audio|\.(mp3|m4a|aac|ogg|wav)(?:[?#].*)?$/i.test(url);
-  const videoPlayer = useVideoPlayer(looksVideo ? { uri: resolved, headers: needsAuth ? getApiMediaAuthHeaders(url, token, getApiUrl("/")) : undefined } : null, player => { player.loop = false; });
+  const videoPlayer = useVideoPlayer(null, player => { player.loop = false; });
   useEffect(() => {
-    if (!looksVideo || !offlineUri) return;
-    void videoPlayer.replaceAsync({ uri: offlineUri }).catch(() => undefined);
-  }, [looksVideo, offlineUri, videoPlayer]);
+    if (!looksVideo) { videoPlayer.pause(); return; }
+    let active = true;
+    videoPlayer.pause();
+    const source = offlineUri
+      ? { uri: offlineUri }
+      : { uri: resolved, headers: needsAuth ? getApiMediaAuthHeaders(url, token, getApiUrl("/")) : undefined };
+    void videoPlayer.replaceAsync(source).then(() => {
+      if (active) videoPlayer.pause();
+    }).catch(() => undefined);
+    return () => { active = false; videoPlayer.pause(); };
+  }, [looksVideo, url, offlineUri, resolved, needsAuth, token, videoPlayer]);
   return <View style={{ width: "100%" }}>
     <Pressable accessibilityRole="button" accessibilityLabel={"Open " + label + " fullscreen"} onPress={() => setFullScreen(true)} style={{ width: "100%", minHeight: isImage ? height : 76, borderRadius: 12, overflow: "hidden", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
       {isImage ? <Image source={imageSource} contentFit="contain" accessibilityLabel={label} style={{ width: "100%", height, backgroundColor: "#f3f4f6" }} cachePolicy="memory-disk" transition={150} /> : looksVideo ? <VideoView player={videoPlayer} style={{ width: "100%", height: Math.max(180, height) }} nativeControls allowsFullscreen={false} contentFit="contain" accessibilityLabel={label} /> : <View style={{ minHeight: 76, padding: 14, flexDirection: "row", alignItems: "center", gap: 12 }}><Feather name={looksAudio ? "headphones" : "file-text"} size={24} color={colors.primary} /><View style={{ flex: 1 }}><Text style={{ color: colors.foreground, fontWeight: "600" }}>{label}</Text><Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 3 }}>Tap to open media</Text></View><Feather name="maximize-2" size={18} color={colors.mutedForeground} /></View>}
