@@ -13,6 +13,31 @@ type OfflineUsage = {items:number;bytes:number;maxItems:number;maxBytes:number};
 const keyFor = (userId: number) => "dallyletter_offline_media_v1_user_" + userId;
 const MAX_OFFLINE_MEDIA_BYTES = 512 * 1024 * 1024;
 const MAX_OFFLINE_MEDIA_ITEMS = 250;
+const OFFLINE_MEDIA_RETENTION_MS = 60 * 24 * 60 * 60 * 1000;
+async function pruneOfflineMedia(userId: number, incomingBytes = 0, preserveUrl?: string): Promise<void> {
+  const raw = await AsyncStorage.getItem(keyFor(userId));
+  const saved = raw ? JSON.parse(raw) as SavedMedia : {};
+  const entries: Array<{url:string;record:SavedMedia[string];bytes:number;time:number}> = [];
+  for (const [url,record] of Object.entries(saved)) {
+    const info = await FileSystem.getInfoAsync(record.localUri).catch(() => null);
+    const time = Date.parse(record.downloadedAt);
+    if (!info?.exists || !Number.isFinite(time) || Date.now() - time > OFFLINE_MEDIA_RETENTION_MS) {
+      await FileSystem.deleteAsync(record.localUri,{idempotent:true}).catch(()=>undefined);
+      delete saved[url];
+      continue;
+    }
+    const bytes = info && "size" in info ? Number(info.size || record.bytes || 0) : Number(record.bytes || 0);
+    entries.push({url,record,bytes,time});
+  }
+  let count=entries.length, total=entries.reduce((n,x)=>n+x.bytes,0);
+  for (const entry of entries.filter(x=>x.url!==preserveUrl).sort((a,b)=>a.time-b.time)) {
+    if (count + (preserveUrl && !saved[preserveUrl] ? 1 : 0) <= MAX_OFFLINE_MEDIA_ITEMS && total + incomingBytes <= MAX_OFFLINE_MEDIA_BYTES) break;
+    await FileSystem.deleteAsync(entry.record.localUri,{idempotent:true}).catch(()=>undefined);
+    delete saved[entry.url]; count--; total-=entry.bytes;
+  }
+  await AsyncStorage.setItem(keyFor(userId),JSON.stringify(saved));
+}
+
 export async function getOfflineMediaUsage(userId: number): Promise<{items:number;bytes:number;maxItems:number;maxBytes:number}> {
   const raw = await AsyncStorage.getItem(keyFor(userId));
   const saved = raw ? JSON.parse(raw) as SavedMedia : {};
@@ -68,6 +93,7 @@ async function downloadOfflineMediaRecord(
     const raw = await AsyncStorage.getItem(keyFor(userId));
     const entries = raw ? JSON.parse(raw) as SavedMedia : {};
     const previous = entries[url];
+    await pruneOfflineMedia(userId, bytes, url);
     const current = await getOfflineMediaUsage(userId);
     const previousBytes = Number(previous?.bytes || 0);
     if (!previous && current.items >= MAX_OFFLINE_MEDIA_ITEMS) throw new Error("Offline storage item limit reached (250 files).");
