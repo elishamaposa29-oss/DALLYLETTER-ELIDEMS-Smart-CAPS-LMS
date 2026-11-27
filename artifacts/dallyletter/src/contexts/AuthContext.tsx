@@ -67,6 +67,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [sessionUser, fetchedUser, queryClient]);
 
   useEffect(() => {
+    if (!token) return;
+    const replay = () => navigator.serviceWorker?.controller?.postMessage({ type: "DALLYLETTER_REPLAY_OFFLINE_OUTBOX", authorization: "Bearer " + token });
+    replay();
+    window.addEventListener("online", replay);
+    navigator.serviceWorker?.ready.then(replay).catch(() => undefined);
+    return () => window.removeEventListener("online", replay);
+  }, [token]);
+
+  useEffect(() => {
     if (!token || !error) return;
     const message = error instanceof Error ? error.message : String(error);
     const status = Number((error as any)?.status ?? (error as any)?.statusCode ?? (error as any)?.response?.status ?? 0);
