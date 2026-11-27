@@ -36,7 +36,7 @@ export async function listOfflineLearningRecords<T = unknown>(storage: QueueStor
     return rows.filter((row: any) => row && row.userId === userId && typeof row.id === "string" &&
       ["lesson", "draft", "message", "learning"].includes(row.kind) &&
       Number.isFinite(row.updatedAt) && now - row.updatedAt >= 0 && now - row.updatedAt <= retention &&
-      Number.isFinite(row.expiresAt) && row.expiresAt > now) as OfflineLearningRecord<T>[];
+      Number.isFinite(row.expiresAt) && row.updatedAt + retention > now) as OfflineLearningRecord<T>[];
   } catch { return []; }
 }
 
