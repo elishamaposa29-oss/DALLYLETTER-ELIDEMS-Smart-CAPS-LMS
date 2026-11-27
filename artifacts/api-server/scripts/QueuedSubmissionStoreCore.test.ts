@@ -4,6 +4,7 @@ import { enqueueSubmission, listQueuedSubmissions, removeQueuedSubmission, updat
 import { listOfflineLearningRecords, putOfflineLearningRecord, pruneOfflineLearningRecords } from "../../dallyletter-mobile/components/OfflineLearningStoreCore.js";
 import { contiguousUploadOffset, uploadIsComplete, validateUploadChunk } from "../src/lib/resumable-upload-core.js";
 import { classifyIdempotencyRecord, hashIdempotentRequest, isValidIdempotencyKey } from "../src/lib/idempotency-core.js";
+import { CLOUD_STORAGE_QUOTA_BYTES, isCloudStorageCategory, safeCloudFileName } from "../src/lib/cloud-storage-core.js";
 
 class MemoryStorage implements QueueStorage {
   values = new Map<string, string>();
@@ -195,4 +196,13 @@ test("a concurrent duplicate remains pending and a changed payload conflicts", (
   assert.equal(pending.kind, "pending");
   const changed = classifyIdempotencyRecord({ requestHash: hash, state: "complete", responseStatus: 201, responseBody: {} }, hashIdempotentRequest("POST", "/api/messages", { content: "edited" }));
   assert.equal(changed.kind, "conflict");
+});
+
+test("per-user cloud storage allowance is 10 GiB and resource categories cover learner work", () => {
+  assert.equal(CLOUD_STORAGE_QUOTA_BYTES, 10 * 1024 * 1024 * 1024);
+  for (const category of ["video","lesson","assignment","exercise","study_group","message","document","other"]) {
+    assert.equal(isCloudStorageCategory(category), true);
+  }
+  assert.equal(isCloudStorageCategory("another-user-private"), false);
+  assert.equal(safeCloudFileName("../../private\\0answer.pdf"), ".._.._private_answer.pdf");
 });
