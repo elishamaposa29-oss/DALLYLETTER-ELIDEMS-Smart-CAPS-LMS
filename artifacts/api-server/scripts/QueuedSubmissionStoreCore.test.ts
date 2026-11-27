@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { enqueueSubmission, listQueuedSubmissions, removeQueuedSubmission, updateQueuedSubmission, type QueueStorage } from "../../dallyletter-mobile/components/QueuedSubmissionStoreCore.js";
 import { listOfflineLearningRecords, putOfflineLearningRecord, pruneOfflineLearningRecords } from "../../dallyletter-mobile/components/OfflineLearningStoreCore.js";
+import { contiguousUploadOffset, uploadIsComplete, validateUploadChunk } from "../src/lib/resumable-upload-core.js";
 
 class MemoryStorage implements QueueStorage {
   values = new Map<string, string>();
@@ -103,4 +104,29 @@ test("storage pressure refuses to discard drafts or learner events", async () =>
   await putOfflineLearningRecord(storage, 11, "draft", "draft-keep", "x".repeat(100), { now, maxBytes: 300 });
   await assert.rejects(() => putOfflineLearningRecord(storage, 11, "learning", "event-2", "y".repeat(1000), { now: now + 1, maxBytes: 300 }), /storage is full/i);
   assert.equal((await listOfflineLearningRecords(storage, 11, { now: now + 1 })).some(row => row.id === "draft-keep"), true);
+});
+
+test("resumable upload resumes at the first missing acknowledged byte offset", () => {
+  const received = [{ index: 0, offset: 0, size: 256 }, { index: 2, offset: 512, size: 256 }];
+  assert.equal(contiguousUploadOffset(received), 256);
+  assert.equal(uploadIsComplete(768, 256, received), false);
+});
+
+test("resumable upload accepts duplicate chunks only when their offset and size match", () => {
+  assert.equal(validateUploadChunk(600, 256, 0, 0, 256), true);
+  assert.equal(validateUploadChunk(600, 256, 2, 512, 88), true);
+  assert.equal(validateUploadChunk(600, 256, 2, 256, 88), false);
+  assert.equal(validateUploadChunk(600, 256, 2, 512, 256), false);
+});
+
+test("resumable upload completes only when every chunk is contiguous and correctly sized", () => {
+  assert.equal(uploadIsComplete(600, 256, [
+    { index: 0, offset: 0, size: 256 },
+    { index: 1, offset: 256, size: 256 },
+    { index: 2, offset: 512, size: 88 },
+  ]), true);
+  assert.equal(uploadIsComplete(600, 256, [
+    { index: 0, offset: 0, size: 256 },
+    { index: 2, offset: 512, size: 88 },
+  ]), false);
 });
