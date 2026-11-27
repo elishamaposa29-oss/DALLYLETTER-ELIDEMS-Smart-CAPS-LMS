@@ -9,7 +9,7 @@ const sessionKey = (userId: number, uri: string) => "dallyletter_resumable_uploa
 async function requestJson(url: string, token: string, init: RequestInit = {}) {
   const response = await fetch(getApiUrl(url), { ...init, headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", ...(init.headers || {}) } });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || "Upload request failed (HTTP " + response.status + ").");
+  if (!response.ok) throw new Error((body.error || "Upload request failed") + " (HTTP " + response.status + ").");
   return body;
 }
 
@@ -36,12 +36,14 @@ export async function uploadFileResumably(options: {
   }
   let state: any;
   try { state = await requestJson("/api/uploads/sessions/" + session.sessionId, token); }
-  catch {
+  catch (error) {
+    if (!(error instanceof Error) || !error.message.includes("HTTP 404")) throw error;
     const created = await requestJson("/api/uploads/sessions", token, { method: "POST", body: JSON.stringify({ fileName, mimeType, totalBytes }) });
     session = { ...session, sessionId: created.sessionId, updatedAt: Date.now() };
     await AsyncStorage.setItem(key, JSON.stringify(session));
     state = await requestJson("/api/uploads/sessions/" + session.sessionId, token);
   }
+  if (state.complete && state.mediaUrl) { await AsyncStorage.removeItem(key); return state; }
   const chunkBytes = Number(state.chunkBytes);
   if (!Number.isSafeInteger(chunkBytes) || chunkBytes < 1) throw new Error("The server returned an invalid chunk size.");
   const received = new Set<number>((state.received || []).map((item: any) => Number(item.index)));
