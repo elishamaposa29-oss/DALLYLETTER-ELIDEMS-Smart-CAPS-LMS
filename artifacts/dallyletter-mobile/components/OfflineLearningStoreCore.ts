@@ -43,7 +43,7 @@ export async function putOfflineLearningRecord<T>(storage: QueueStorage, userId:
   if (!validUser(userId) || !id || id.length > 240) throw new Error("Invalid offline learning record identity.");
   const now = policy.now ?? Date.now(), retention = policy.retentionMs ?? retentionDefault;
   const maxBytes = policy.maxBytes ?? maxBytesDefault, maxEntries = policy.maxEntries ?? maxEntriesDefault;
-  const current = await listOfflineLearningRecords(storage, userId, policy);
+  const current = await listOfflineLearningRecords<T>(storage, userId, policy);
   const record: OfflineLearningRecord<T> = { id, userId, kind, value, createdAt: current.find(row => row.id === id && row.kind === kind)?.createdAt ?? now, updatedAt: now, expiresAt: now + retention, bytes: byteSize(value) };
   let rows = [...current.filter(row => !(row.id === id && row.kind === kind)), record];
   const totalBytes = () => rows.reduce((sum, row) => sum + row.bytes, 0);
