@@ -12,6 +12,7 @@ const base = (process.env.API_BASE_URL || "http://127.0.0.1:3001").replace(/\/$/
 
 const failures = [];
 let baseReachable = true;
+let hostSuspended = false;
 let globalAuthInterceptsUnknownRoutes = false;
 
 async function assertRouteResponds(path, init, acceptedStatuses, label) {
@@ -25,6 +26,12 @@ async function assertRouteResponds(path, init, acceptedStatuses, label) {
     const response = await fetch(base + path, { ...init, signal: AbortSignal.timeout(8000) });
     baseReachable = true;
     const body = await response.text();
+    if (response.status === 503 && /This service has been suspended by its owner/i.test(body)) {
+      baseReachable = false;
+      hostSuspended = true;
+      console.warn("DEPLOYED_API_SUSPENDED: Render returned its explicit suspension page; route probes are skipped, not passed.");
+      return;
+    }
     if (response.status === 404) {
       failures.push(`${label}: HTTP 404 (deployment may be stale or route is not mounted)`);
       console.error(`FAIL ${label}: HTTP 404`);
@@ -142,7 +149,9 @@ await assertRouteResponds(
   "configured Google sign-in rejects an invalid ID token (503 means GOOGLE_CLIENT_ID is missing)",
 );
 
-if (!baseReachable) {
+if (hostSuspended) {
+  console.warn("DEPLOYED_API_SUSPENDED: production route verification is blocked by the Render service suspension. Local isolated API integration tests remain the code verification source.");
+} else if (!baseReachable) {
   console.warn("DEPLOYED_API_UNAVAILABLE: the configured Render API host did not respond; route-level checks were skipped, not passed. Confirm service health before treating production API verification as complete.");
 }
 if (failures.length) {
