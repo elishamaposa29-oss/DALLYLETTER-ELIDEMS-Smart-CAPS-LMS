@@ -498,6 +498,7 @@ export default function TeacherLessons() {
                     <CardContent className="border-t pt-4">
                       <ExerciseBuilderPanel
                         lessonId={lesson.id}
+                        userId={user?.id}
                         onSaved={() => queryClient.invalidateQueries({ queryKey: getListLessonsQueryKey() })}
                       />
                     </CardContent>
