@@ -102,7 +102,8 @@ Use the canonical pages as evidence. Clearly distinguish current features from p
 The public pages describe study and platform workflows. They do not establish that every listed subject, syllabus, note set or past-paper file is already published in the product.
 
 ## Founder and origin story
-- Creator: Elisha Maposa.
+- Founder and sole creator: Elisha Maposa.
+- Founder message: “Started with nothing at all. Proof of possibility if you commit yourself to discipline.”
 - Public founder story: https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app/founder-story/
 - Dallyletter's educational vision and logic predate the software project; the coding journey and first Python calculator project began in early 2026.
 - The founder describes severe financial hardship, frequent school transfers, a 2024 interruption to schooling in South Africa due to documentation difficulties, returning to education, and experience teaching younger learners in person.
