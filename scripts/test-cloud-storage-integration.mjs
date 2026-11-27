@@ -17,11 +17,11 @@ assert.match(media, /used_bytes=used_bytes\+\$2[\s\S]*used_bytes\+\$2<=quota_byt
 assert.match(media, /INSERT INTO user_cloud_objects/);
 assert.match(media, /getCloudObject\("media\/" \+ storageKey/);
 assert.match(media, /GREATEST\(0,used_bytes-\$2\)/);
-assert.match(lessons, /category: Number\(req\.query\.groupId\) > 0 \? "study_group" : "lesson"/);
+assert.match(lessons, /category: Number\(req\.query\.groupId\) > 0 \? "study_group" : file\.mimetype\.startsWith\("video\/"\) \? "video" : "lesson"/);
 assert.match(assignments, /category: "assignment"/);
 assert.match(exercises, /category: "exercise"/);
 assert.match(messages, /category: groupId != null \? "study_group" : "message"/);
-assert.match(cloud, /router\.post\("\/reconcile",requireAuth/);
+assert.match(cloud, /router\.post\("\/reconcile",requireAuth/);\nassert.match(cloud, /configured:isObjectStorageConfigured\(\)/);
 assert.match(cloud, /WHERE id=\$1 AND user_id=\$2/);
 assert.match(cloud, /WHERE user_id=\$1/);
 assert.match(schema, /user_cloud_objects/);
