@@ -32,7 +32,7 @@ const requiredColumns: Array<[string, string]> = [
   ["media_object_chunks", "size_bytes"],
   ["media_object_chunks", "chunk_index"],
   ["media_object_chunks", "data"],
-  ["media_object_chunks", "created_at"]
+  ["media_object_chunks", "created_at"],\n  ["resumable_upload_sessions", "user_id"],\n  ["resumable_upload_chunks", "sha256"]
 ];
 
 router.get("/healthz", async (_req, res): Promise<void> => {
