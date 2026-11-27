@@ -42,7 +42,7 @@ export async function enqueueSubmission(storage: QueueStorage, item: Omit<Queued
   if (duplicate) {
     if (duplicate.body === item.body) return current;
     const replaced = current.map((row) => row.id === duplicate.id
-      ? { ...row, body: item.body, attempts: 0, lastError: undefined }
+      ? { ...row, id: createSubmissionIdempotencyKey(), idempotencyKey: createSubmissionIdempotencyKey(), body: item.body, attempts: 0, lastError: undefined }
       : row);
     await storage.setItem(queueKey(item.userId), JSON.stringify(replaced));
     return replaced;
