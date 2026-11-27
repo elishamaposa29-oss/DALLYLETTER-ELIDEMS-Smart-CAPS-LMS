@@ -95,7 +95,7 @@ export default function StudentAssignments() {
     if (!("serviceWorker" in navigator)) return;
     const onMessage = (event: MessageEvent) => {
       if (event.data?.type !== "DALLYLETTER_OFFLINE_SUBMISSION_RESULT") return;
-      if (event.data.ok) { toast({ title: "Assignment synced successfully" }); load(); }
+      if (event.data.ok) { toast({ title: "Assignment synced successfully" }); setSelected(null); setContent(""); setSubmissionFile(null); setDraftLoadedId(null); load(); }
       else toast({ variant: "destructive", title: "Queued assignment needs attention", description: "The server rejected the saved submission. Reopen it to review and resubmit." });
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
@@ -109,9 +109,7 @@ export default function StudentAssignments() {
     if (!user?.id || !file.type) { toast({ variant: "destructive", title: "Sign in and select a file with a supported media type." }); return; }
     setSubmissionFile(null);
     setUploadingSubmissionFile(true);
-    void uploadFileResumably(file, token(), user.id, progress => {
-      if (progress.percent < 100) toast({ title: "Uploading attachment", description: progress.percent + "% complete" });
-    })
+    void uploadFileResumably(file, token(), user.id)
       .then(result => setSubmissionFile({ url: result.mediaUrl, fileName: result.fileName }))
       .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Attachment upload failed" }))
       .finally(() => setUploadingSubmissionFile(false));
