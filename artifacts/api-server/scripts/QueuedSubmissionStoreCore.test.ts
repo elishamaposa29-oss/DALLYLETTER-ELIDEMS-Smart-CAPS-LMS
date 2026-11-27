@@ -34,15 +34,16 @@ test("re-enqueueing the identical operation is deduplicated without changing its
   assert.equal(rows[0].idempotencyKey, rows[0].id);
 });
 
-test("a changed unsent payload replaces the target operation with a fresh idempotency key", async () => {
+test("a changed unsent payload is retained as a separate learner attempt", async () => {
   const storage = new MemoryStorage();
   await enqueueSubmission(storage, item(11, "first answer"));
   const first = (await listQueuedSubmissions(storage, 11))[0];
   const rows = await enqueueSubmission(storage, item(11, "second answer"));
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].body, "second answer");
-  assert.notEqual(rows[0].idempotencyKey, first.idempotencyKey);
-  assert.equal(rows[0].attempts, 0);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map(row => row.body), ["first answer", "second answer"]);
+  assert.notEqual(rows[0].idempotencyKey, rows[1].idempotencyKey);
+  assert.equal(rows[0].idempotencyKey, first.idempotencyKey);
+  assert.equal(rows[1].attempts, 0);
 });
 
 test("retry bookkeeping increments attempts and bounds error text", async () => {
