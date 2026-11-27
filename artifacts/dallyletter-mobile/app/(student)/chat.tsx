@@ -21,6 +21,7 @@ export default function StudentChat() {
   const insets = useSafeAreaInsets();
   const { user, token } = useAuth();
   const [text, setText] = useState("");
+  const [offlineMessages, setOfflineMessages] = useState<any[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [notice, setNotice] = useState("");
   const [unreadGroups, setUnreadGroups] = useState<Array<{id:number;unread:number}>>([]);
@@ -66,6 +67,20 @@ export default function StudentChat() {
   useEffect(() => { const sub=AppState.addEventListener("change", state => { if(state==="active") setRetrySignal(v=>v+1); }); return () => sub.remove(); }, []);
   useEffect(() => { if (queuedMessages.length === 0) return; const timer=setInterval(() => { if(AppState.currentState==="active") setRetrySignal(v=>v+1); }, 30000); return () => clearInterval(timer); }, [queuedMessages.length]);
   const { data: messages, refetch } = useListMessages({ groupId: selectedGroupId }, { query: { enabled: selectedGroupId != null, refetchInterval: 5000 } as any });
+  useEffect(() => {
+    if (!user?.id || selectedGroupId == null) { setOfflineMessages([]); return; }
+    let active = true;
+    void listOfflineLearningRecords(user.id).then(rows => {
+      const cached = rows.find(row => row.kind === "message" && row.id === "group:" + selectedGroupId);
+      if (active && Array.isArray(cached?.value)) setOfflineMessages(cached.value);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [user?.id, selectedGroupId]);
+  useEffect(() => {
+    if (!user?.id || selectedGroupId == null || !Array.isArray(messages)) return;
+    setOfflineMessages(messages);
+    void putOfflineLearningRecord(user.id, "message", "group:" + selectedGroupId, messages).catch(() => undefined);
+  }, [user?.id, selectedGroupId, messages]);
   const sendMutation = useSendMessage({
     mutation: {
       onSuccess: () => {
