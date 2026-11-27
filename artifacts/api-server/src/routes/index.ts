@@ -35,10 +35,12 @@ import emailRouter from "./email";
 import contentPermissionsRouter from "./contentPermissions";
 import teacherCvWorkspaceRouter from "./teacherCvWorkspace";
 import profileConnectionsRouter from "./profileConnections";
+import resumableUploadsRouter from "./resumableUploads";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use("/uploads", resumableUploadsRouter);
 router.use(authRouter);
 router.use(accountEmailRouter);
 router.use(usersRouter);
