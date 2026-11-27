@@ -149,3 +149,12 @@ test("idempotency keys reject empty, oversized and unsafe input", () => {
   assert.equal(isValidIdempotencyKey("x".repeat(201)), false);
   assert.equal(isValidIdempotencyKey("bad key"), false);
 });
+
+test("outbox storage limits reject new work without discarding already queued submissions", async () => {
+  const storage = new MemoryStorage();
+  await enqueueSubmission(storage, item(11, "keep this pending answer"));
+  await assert.rejects(() => enqueueSubmission(storage, item(11, "x".repeat(5 * 1024 * 1024 + 100))), /storage is full/i);
+  const rows = await listQueuedSubmissions(storage, 11);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].body, "keep this pending answer");
+});
