@@ -1,6 +1,7 @@
 import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import UserProfileLink from "@/components/UserProfileLink";
+import { useAuth } from "@/contexts/AuthContext";
 import { getApiUrl } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +18,7 @@ import { ClipboardList, Plus, Calendar, BookOpen, Eye, Star, Trash2 } from "luci
 const token = () => localStorage.getItem("dallyletter_token") ?? "";
 
 export default function TeacherAssignments() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
