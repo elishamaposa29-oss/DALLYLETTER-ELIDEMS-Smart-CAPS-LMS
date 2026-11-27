@@ -13,7 +13,8 @@ type OfflineUsage = {items:number;bytes:number;maxItems:number;maxBytes:number};
 const keyFor = (userId: number) => "dallyletter_offline_media_v1_user_" + userId;
 const MAX_OFFLINE_MEDIA_BYTES = 512 * 1024 * 1024;
 const MAX_OFFLINE_MEDIA_ITEMS = 250;
-const OFFLINE_MEDIA_RETENTION_MS = 60 * 24 * 60 * 60 * 1000;
+// Keep saved offline media for 90 days; the device cache remains separately bounded.
+const OFFLINE_MEDIA_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 async function pruneOfflineMedia(userId: number, incomingBytes = 0, preserveUrl?: string): Promise<void> {
   const raw = await AsyncStorage.getItem(keyFor(userId));
   const saved = raw ? JSON.parse(raw) as SavedMedia : {};
