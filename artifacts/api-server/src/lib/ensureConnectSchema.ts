@@ -28,6 +28,41 @@ export async function ensureConnectSchema(): Promise<void> {
       PRIMARY KEY (storage_key, chunk_index)
     )`);
     await client.query(`CREATE INDEX IF NOT EXISTS media_object_chunks_created_idx ON media_object_chunks(created_at)`);
+    await client.query(`CREATE TABLE IF NOT EXISTS api_idempotency_records (
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      idempotency_key text NOT NULL,
+      request_hash char(64) NOT NULL,
+      state text NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','complete')),
+      response_status integer,
+      response_body jsonb,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      expires_at timestamptz NOT NULL DEFAULT (now() + interval '60 days'),
+      PRIMARY KEY (user_id,idempotency_key)
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS api_idempotency_expiry_idx ON api_idempotency_records(expires_at)");
+    await client.query(`CREATE TABLE IF NOT EXISTS resumable_upload_sessions (
+      id uuid PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      file_name text NOT NULL,
+      mime_type text NOT NULL,
+      total_bytes bigint NOT NULL CHECK(total_bytes > 0 AND total_bytes <= 262144000),
+      chunk_bytes integer NOT NULL CHECK(chunk_bytes > 0),
+      status text NOT NULL DEFAULT 'uploading' CHECK(status IN ('uploading','complete')),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      expires_at timestamptz NOT NULL
+    )`);
+    await client.query(`CREATE TABLE IF NOT EXISTS resumable_upload_chunks (
+      session_id uuid NOT NULL REFERENCES resumable_upload_sessions(id) ON DELETE CASCADE,
+      chunk_index integer NOT NULL CHECK(chunk_index >= 0),
+      byte_offset bigint NOT NULL CHECK(byte_offset >= 0),
+      data bytea NOT NULL,
+      sha256 char(64) NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY(session_id,chunk_index)
+    )`);
+    await client.query("CREATE INDEX IF NOT EXISTS resumable_upload_expiry_idx ON resumable_upload_sessions(expires_at)");
+    await client.query("DELETE FROM resumable_upload_sessions WHERE expires_at < now()");
+
 
     // The CI database and some fresh deployments may contain the core users table
     // without the optional notifications table. Create the canonical table first,
