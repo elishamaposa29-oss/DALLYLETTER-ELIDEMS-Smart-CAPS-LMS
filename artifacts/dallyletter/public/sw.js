@@ -188,7 +188,7 @@ self.addEventListener("fetch", event => {
 
 self.addEventListener("message", event => {
   if(event.data?.type==="DALLYLETTER_REPLAY_OFFLINE_OUTBOX"){event.waitUntil(replayOfflineOutbox(event.data.authorization));return;}
-  if(event.data?.type==="DALLYLETTER_SAVE_OFFLINE_DRAFT"){event.waitUntil(saveOfflineDraft(event.data.draft,event.data.authorization).catch(e=>notifyClients({type:"DALLYLETTER_OFFLINE_DRAFT_ERROR",message:e instanceof Error?e.message:"Draft save failed."})));return;}
+  if(event.data?.type==="DALLYLETTER_SAVE_OFFLINE_DRAFT"){event.waitUntil(saveOfflineDraft(event.data.draft,event.data.authorization).then(()=>event.ports[0]?.postMessage({ok:true})).catch(e=>event.ports[0]?.postMessage({ok:false,error:e instanceof Error?e.message:"Draft save failed."})));return;}
   if(event.data?.type==="DALLYLETTER_GET_OFFLINE_DRAFTS"){
     event.waitUntil((async()=>{try{const scope=await offlineScope(event.data.authorization);const rows=(await offlineStoreAll(DRAFT_STORE)).filter(x=>x.scope===scope&&Date.now()-x.updatedAt<=OFFLINE_MAX_AGE_MS);event.ports[0]?.postMessage({ok:true,drafts:rows.map(x=>({key:x.key,value:x.value,updatedAt:x.updatedAt}))});}catch(error){event.ports[0]?.postMessage({ok:false,error:error instanceof Error?error.message:"Unable to read drafts."});}})());
     return;
