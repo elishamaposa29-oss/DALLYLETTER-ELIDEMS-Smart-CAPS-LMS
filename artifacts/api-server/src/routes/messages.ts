@@ -379,7 +379,7 @@ router.delete("/messages/:id", requireAuth, async (req, res): Promise<void> => {
   res.status(200).json({ ok: true, deleted: true });
 });
 
-router.post("/messages", requireAuth, async (req, res): Promise<void> => {
+router.post("/messages", requireAuth, idempotencyMiddleware, async (req, res): Promise<void> => {
   const currentUser = req.currentUser!;
 
   const parsed = SendMessageBody.safeParse(req.body);
