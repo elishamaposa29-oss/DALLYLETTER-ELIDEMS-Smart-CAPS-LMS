@@ -71,9 +71,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!token || !accountId) return;
     const replay = () => { void navigator.serviceWorker?.ready.then(registration => (navigator.serviceWorker.controller || registration.active)?.postMessage({ type: "DALLYLETTER_REPLAY_OFFLINE_OUTBOX", authorization: "Bearer " + token, userId: accountId })).catch(() => undefined); };
     replay();
+    const onWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type === "DALLYLETTER_OFFLINE_SYNC_REQUIRED") replay();
+    };
     window.addEventListener("online", replay);
+    navigator.serviceWorker?.addEventListener("message", onWorkerMessage);
     navigator.serviceWorker?.ready.then(replay).catch(() => undefined);
-    return () => window.removeEventListener("online", replay);
+    return () => {
+      window.removeEventListener("online", replay);
+      navigator.serviceWorker?.removeEventListener("message", onWorkerMessage);
+    };
   }, [token, sessionUser?.id, fetchedUser?.id]);
 
   useEffect(() => {
