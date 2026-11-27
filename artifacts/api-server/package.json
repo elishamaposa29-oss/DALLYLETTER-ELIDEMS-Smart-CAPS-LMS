@@ -16,7 +16,8 @@
     "start:api": "pnpm run start",
     "backfill:enrollments": "node ./scripts/backfill-enrollments.mjs",
     "test:ai-provider": "node ./scripts/test-ai-provider-http.mjs && node ./scripts/test-ai-provider-model.mjs",
-    "test:teacher-cv-workflow": "node ./scripts/test-teacher-cv-workflow.mjs"
+    "test:teacher-cv-workflow": "node ./scripts/test-teacher-cv-workflow.mjs",
+    "test:cloud-storage-integration": "node ./scripts/test-cloud-storage-integration.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
