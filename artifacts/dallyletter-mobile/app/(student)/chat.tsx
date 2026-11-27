@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 type ChatGroup = { id: number; name: string; description?: string | null; subject?: string; creatorName?: string; memberCount?: number; createdAt?: string; isMember?: boolean; settings?: { allowPolls?: boolean }; members?: Array<{ id: number; name?: string; role?: string; isPrefect?: boolean }> };
 import { useAuth } from "@/contexts/AuthContext";
 import { createSubmissionIdempotencyKey } from "@/components/QueuedSubmissionStoreCore";
+import { listOfflineLearningRecords, putOfflineLearningRecord, removeOfflineLearningRecord } from "@/components/OfflineLearningStore";
 import { UserProfileLink } from "@/components/UserProfileLink";
 import { useColors } from "@/hooks/useColors";
 
@@ -46,6 +47,20 @@ export default function StudentChat() {
   const [queuedMessages, setQueuedMessages] = useState<any[]>([]);
   const [retrySignal, setRetrySignal] = useState(0);
   const queueKey = user?.id ? "dallyletter_mobile_chat_outbox_user_" + user.id : null;
+  useEffect(() => {
+    if (!user?.id || selectedGroupId == null) return;
+    let active = true;
+    void listOfflineLearningRecords(user.id).then(rows => {
+      const draft = rows.find(row => row.kind === "draft" && row.id === "chat:" + selectedGroupId);
+      if (active && draft && typeof (draft.value as any)?.text === "string") setText((draft.value as any).text);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [user?.id, selectedGroupId]);
+  useEffect(() => {
+    if (!user?.id || selectedGroupId == null || !text.trim()) return;
+    const timer = setTimeout(() => { void putOfflineLearningRecord(user.id, "draft", "chat:" + selectedGroupId, { text }).catch(() => undefined); }, 350);
+    return () => clearTimeout(timer);
+  }, [user?.id, selectedGroupId, text]);
   useEffect(() => { let active=true; if (!queueKey) { setQueuedMessages([]); return; } void AsyncStorage.getItem(queueKey).then(raw => { if(active && raw) setQueuedMessages(JSON.parse(raw)); }).catch(() => {}); return () => { active=false; }; }, [queueKey]);
   useEffect(() => { const sub=AppState.addEventListener("change", state => { if(state==="active") setRetrySignal(v=>v+1); }); return () => sub.remove(); }, []);
   useEffect(() => { if (queuedMessages.length === 0) return; const timer=setInterval(() => { if(AppState.currentState==="active") setRetrySignal(v=>v+1); }, 30000); return () => clearInterval(timer); }, [queuedMessages.length]);
@@ -97,12 +112,14 @@ export default function StudentChat() {
     const idempotencyKey = createSubmissionIdempotencyKey();
     try {
       await sendMutation.mutateAsync({ data: { content, type: "text", groupId: selectedGroupId, idempotencyKey } as any });
+      if (user?.id) await removeOfflineLearningRecord(user.id, "draft", "chat:" + selectedGroupId);
       setText("");
     } catch (error) {
       const status = (error as { status?: number })?.status;
       if (!status && queueKey) {
         const item = { id: "queued-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8), idempotencyKey, content, groupId: selectedGroupId, createdAt: new Date().toISOString(), senderId: user.id, senderName: user.name, queued: true };
         await persistQueue([...queuedMessages, item]);
+        if (user?.id) await removeOfflineLearningRecord(user.id, "draft", "chat:" + selectedGroupId);
         setText("");
         setNotice("Message saved offline. It will retry for the selected group when the connection returns.");
       } else {
