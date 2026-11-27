@@ -34,3 +34,8 @@ export async function listOfflineDrafts<T = unknown>(token: string, userId: numb
 export function clearOfflineDrafts(token: string, userId: number): void {
   navigator.serviceWorker?.controller?.postMessage({ type: "DALLYLETTER_CLEAR_OFFLINE_DRAFTS", authorization: "Bearer " + token, userId });
 }
+
+/** Delete one draft without affecting other work or queued submissions. */
+export function deleteOfflineDraft(key: string, token: string, userId: number): void {
+  navigator.serviceWorker?.controller?.postMessage({ type: "DALLYLETTER_DELETE_OFFLINE_DRAFT", draft: { key }, authorization: "Bearer " + token, userId });
+}
