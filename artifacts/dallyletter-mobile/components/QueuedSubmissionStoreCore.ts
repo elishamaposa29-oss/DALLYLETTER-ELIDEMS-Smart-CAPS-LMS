@@ -1,5 +1,7 @@
 export type QueuedSubmission = {
   id: string;
+  /** Stable across every retry of this logical submission. */
+  idempotencyKey: string;
   userId: number;
   kind: "assignment" | "exercise" | "poll";
   targetId: number;
@@ -17,22 +19,30 @@ export interface QueueStorage {
 
 const queueKey = (userId: number) => `dallyletter_pending_submissions_v1_user_${userId}`;
 
+function createOperationKey(): string {
+  // Works in React Native runtimes without requiring a crypto polyfill.
+  return `dl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export async function listQueuedSubmissions(storage: QueueStorage, userId: number): Promise<QueuedSubmission[]> {
   try {
     const raw = await storage.getItem(queueKey(userId));
     const rows = raw ? JSON.parse(raw) : [];
-    return Array.isArray(rows) ? rows.filter((x: any) => x && x.userId === userId && typeof x.id === "string") : [];
+    return Array.isArray(rows) ? rows.filter((x: any) => x && x.userId === userId && typeof x.id === "string").map((x: any) => ({ ...x, idempotencyKey: typeof x.idempotencyKey === "string" && x.idempotencyKey ? x.idempotencyKey : x.id })) : [];
   } catch {
     return [];
   }
 }
 
-export async function enqueueSubmission(storage: QueueStorage, item: Omit<QueuedSubmission, "id" | "createdAt" | "attempts">): Promise<QueuedSubmission[]> {
+export async function enqueueSubmission(storage: QueueStorage, item: Omit<QueuedSubmission, "id" | "idempotencyKey" | "createdAt" | "attempts"> & { idempotencyKey?: string }): Promise<QueuedSubmission[]> {
   const current = await listQueuedSubmissions(storage, item.userId);
-  const id = `${item.kind}:${item.targetId}`;
-  const next: QueuedSubmission = { ...item, id, createdAt: new Date().toISOString(), attempts: 0 };
-  // One latest pending payload per learning item; never duplicate queue entries.
-  const rows = [...current.filter((x) => x.id !== id), next].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  // An identical retry is one operation; a changed payload is a separate attempt.
+  const duplicate = current.find((x) => x.kind === item.kind && x.targetId === item.targetId && x.path === item.path && x.body === item.body);
+  if (duplicate) return current;
+  const idempotencyKey = item.idempotencyKey || createOperationKey();
+  const id = idempotencyKey;
+  const next: QueuedSubmission = { ...item, id, idempotencyKey, createdAt: new Date().toISOString(), attempts: 0 };
+  const rows = [...current, next].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   await storage.setItem(queueKey(item.userId), JSON.stringify(rows));
   return rows;
 }
