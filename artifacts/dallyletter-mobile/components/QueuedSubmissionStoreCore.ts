@@ -37,7 +37,7 @@ export async function listQueuedSubmissions(storage: QueueStorage, userId: numbe
 export async function enqueueSubmission(storage: QueueStorage, item: Omit<QueuedSubmission, "id" | "idempotencyKey" | "createdAt" | "attempts"> & { idempotencyKey?: string }): Promise<QueuedSubmission[]> {
   const current = await listQueuedSubmissions(storage, item.userId);
   // Keep exactly one pending operation per learning target. If the learner edits
-  // an unsent answer, replace its payload but retain the original replay key.
+  // an unsent answer, replace its payload and rotate the replay key so the server can safely accept the new body.
   const duplicate = current.find((x) => x.kind === item.kind && x.targetId === item.targetId && x.path === item.path);
   if (duplicate) {
     if (duplicate.body === item.body) return current;
