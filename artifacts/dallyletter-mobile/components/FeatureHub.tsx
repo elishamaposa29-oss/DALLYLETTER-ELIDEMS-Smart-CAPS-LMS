@@ -307,7 +307,7 @@ export default function FeatureHub() {
               continue;
             }
           }
-          await request(item.path,{method:"POST",body:item.body});
+          await request(item.path,{method:"POST",body:item.body,headers:{"Idempotency-Key":item.idempotencyKey || item.id}});
           await clearDraft(item);
           await removeQueuedSubmission(user.id,item.id);
         } catch (e) {
