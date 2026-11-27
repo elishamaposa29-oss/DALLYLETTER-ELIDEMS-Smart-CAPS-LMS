@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { enqueueSubmission, listQueuedSubmissions, removeQueuedSubmission, updateQueuedSubmission, type QueueStorage } from "../../dallyletter-mobile/components/QueuedSubmissionStoreCore.js";
 import { listOfflineLearningRecords, putOfflineLearningRecord, pruneOfflineLearningRecords } from "../../dallyletter-mobile/components/OfflineLearningStoreCore.js";
 import { contiguousUploadOffset, uploadIsComplete, validateUploadChunk } from "../src/lib/resumable-upload-core.js";
-import { hashIdempotentRequest, isValidIdempotencyKey } from "../src/lib/idempotency-core.js";
+import { classifyIdempotencyRecord, hashIdempotentRequest, isValidIdempotencyKey } from "../src/lib/idempotency-core.js";
 
 class MemoryStorage implements QueueStorage {
   values = new Map<string, string>();
@@ -160,4 +160,27 @@ test("outbox storage limits reject new work without discarding already queued su
   const rows = await listQueuedSubmissions(storage, 11);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].body, "keep this pending answer");
+});
+
+test("duplicate delivery replays the stored acknowledgement without executing the operation again", () => {
+  const body = { content: "learner response" };
+  const requestHash = hashIdempotentRequest("POST", "/api/assignments/42/submit", body);
+  const stored = { requestHash, state: "complete" as const, responseStatus: 201, responseBody: { id: 99, status: "submitted" } };
+  let executions = 1;
+  const retry = classifyIdempotencyRecord(stored, requestHash);
+  if (retry.kind !== "replay") executions += 1;
+  assert.equal(retry.kind, "replay");
+  if (retry.kind === "replay") {
+    assert.equal(retry.status, 201);
+    assert.deepEqual(retry.body, stored.responseBody);
+  }
+  assert.equal(executions, 1);
+});
+
+test("a concurrent duplicate remains pending and a changed payload conflicts", () => {
+  const hash = hashIdempotentRequest("POST", "/api/messages", { content: "hello" });
+  const pending = classifyIdempotencyRecord({ requestHash: hash, state: "pending", responseStatus: null, responseBody: null }, hash);
+  assert.equal(pending.kind, "pending");
+  const changed = classifyIdempotencyRecord({ requestHash: hash, state: "complete", responseStatus: 201, responseBody: {} }, hashIdempotentRequest("POST", "/api/messages", { content: "edited" }));
+  assert.equal(changed.kind, "conflict");
 });
