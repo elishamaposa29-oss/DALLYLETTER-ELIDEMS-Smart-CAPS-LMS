@@ -132,22 +132,19 @@ export default function StudentPolls() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}`, "Idempotency-Key": idempotencyKey },
         body: JSON.stringify({ answers: answerArray, resultPrivacy, selectedFriendIds }),
       });
-      if (r.status === 400) {
-        const d = await r.json() as { error: string };
-        if (d.error === "Already submitted") {
-          toast({ title: "You've already submitted this poll" });
-          setScreen("list");
-          return;
-        }
+      const data = await r.json().catch(() => ({})) as SubmitResult & { queued?: boolean; error?: string };
+      if (r.status === 400 && data.error === "Already submitted") {
+        toast({ title: "You've already submitted this poll" });
+        setScreen("list");
+        return;
       }
-      const data = await r.json() as SubmitResult & { queued?: boolean };
       if (r.status === 202 && data.queued) { toast({ title: "Saved offline", description: "Your poll answers are queued on this device. They are not submitted until the server confirms sync." }); return; }
       if (!r.ok) throw new Error((data as any)?.error || "Poll submission failed");
       if (user?.id) deleteOfflineDraft("poll:" + activePoll.id, token(), user.id);
       setResults(data);
       setScreen("results");
-    } catch {
-      toast({ variant: "destructive", title: "Submission failed" });
+    } catch (error) {
+      toast({ variant: "destructive", title: error instanceof Error ? error.message : "Submission failed" });
     } finally {
       setSubmitting(false);
     }
