@@ -12,13 +12,11 @@ export function validateUploadChunk(totalBytes: number, chunkBytes: number, inde
 }
 
 export function contiguousUploadOffset(chunks: ReceivedUploadChunk[]): number {
-  let offset = 0;
+  let offset = 0, expectedIndex = 0;
   for (const chunk of [...chunks].sort((a,b)=>a.index-b.index)) {
-    if (chunk.index !== Math.floor(offset / Math.max(1, chunk.size)) && chunk.offset !== offset) {
-      if (chunk.offset !== offset) break;
-    }
-    if (chunk.offset !== offset || chunk.size <= 0) break;
+    if (chunk.index !== expectedIndex || chunk.offset !== offset || chunk.size <= 0) break;
     offset += chunk.size;
+    expectedIndex += 1;
   }
   return offset;
 }
