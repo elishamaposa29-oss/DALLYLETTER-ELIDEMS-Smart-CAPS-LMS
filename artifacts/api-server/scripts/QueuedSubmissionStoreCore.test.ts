@@ -75,20 +75,20 @@ test("malformed stored data fails closed to an empty queue", async () => {
   assert.deepEqual(await listQueuedSubmissions(storage, 11), []);
 });
 
-test("offline learning records are isolated by account and retained for 60 days", async () => {
+test("offline learning records are isolated by account and retained for at least 90 days", async () => {
   const storage = new MemoryStorage();
   const now = 1_800_000_000_000;
   await putOfflineLearningRecord(storage, 11, "draft", "draft-1", { text: "unfinished work" }, { now });
   await putOfflineLearningRecord(storage, 22, "draft", "draft-1", { text: "another learner" }, { now });
   assert.equal((await listOfflineLearningRecords(storage, 11, { now })).length, 1);
   assert.equal((await listOfflineLearningRecords(storage, 22, { now }))[0].value.text, "another learner");
-  assert.equal((await listOfflineLearningRecords(storage, 11, { now: now + 60 * 24 * 60 * 60 * 1000 + 1 })).length, 0);
+  assert.equal((await listOfflineLearningRecords(storage, 11, { now: now + 90 * 24 * 60 * 60 * 1000 + 1 })).length, 0);
 });
 
 test("retention pruning removes expired cached lessons deterministically", async () => {
   const storage = new MemoryStorage();
   const now = 1_800_000_000_000;
-  await putOfflineLearningRecord(storage, 11, "lesson", "lesson-old", { text: "old" }, { now: now - 61 * 24 * 60 * 60 * 1000 });
+  await putOfflineLearningRecord(storage, 11, "lesson", "lesson-old", { text: "old" }, { now: now - 91 * 24 * 60 * 60 * 1000 });
   await putOfflineLearningRecord(storage, 11, "lesson", "lesson-new", { text: "new" }, { now });
   const rows = await pruneOfflineLearningRecords(storage, 11, { now });
   assert.deepEqual(rows.map(row => row.id), ["lesson-new"]);
