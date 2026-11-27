@@ -13,7 +13,7 @@ import { managerHasPermission, requireManagerPermissionIfManager } from "../lib/
 import { getAIProvider } from "../lib/ai-provider";
 import { hasContentPermission } from "../lib/content-permissions";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, isCloudQuotaExceeded, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
 const learnerRole = "student";
@@ -58,9 +58,10 @@ router.post("/answer-media", requireAuth, (req,res):void => {
         mimeType: file.mimetype,
         size: file.size,
       });
-    }).catch(async () => {
+    }).catch(async (error) => {
       const { unlink } = await import("node:fs/promises");
       await unlink(file.path).catch(() => undefined);
+      if (!res.headersSent && isCloudQuotaExceeded(error)) { res.status(413).json({code:"CLOUD_QUOTA_EXCEEDED",error:"Your 10 GiB cloud storage allowance is full."}); return; }
       if (!res.headersSent) res.status(503).json({error:"Persistent media storage is unavailable. Configure durable object storage and retry."});
     });
   });
@@ -118,9 +119,10 @@ router.post("/question-media", requireAuth, requireManagerPermissionIfManager("u
           .where(and(eq(exerciseQuestionsTable.id, question.id), eq(exerciseQuestionsTable.exerciseId, exerciseId)))
           .returning({ id: exerciseQuestionsTable.id });
         if (!updatedQuestion) throw new Error("Question attachment target disappeared before save");
-      } catch {
+      } catch (error) {
         if (mediaPersisted) await removeStoredMedia(file.filename).catch(() => undefined);
         else await discardTemporaryFile();
+        if (isCloudQuotaExceeded(error)) { res.status(413).json({code:"CLOUD_QUOTA_EXCEEDED",error:"Your 10 GiB cloud storage allowance is full."}); return; }
         res.status(503).json({error:"Persistent media storage is unavailable or the attachment could not be saved. Please retry."});
         return;
       }

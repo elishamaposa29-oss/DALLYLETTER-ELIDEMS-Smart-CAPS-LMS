@@ -13,7 +13,7 @@ import { getAIProvider } from "../lib/ai-provider";
 import { isObjectStorageConfigured } from "../lib/object-storage";
 import { logger } from "../lib/logger";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, isCloudQuotaExceeded, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
 const materialUpload = multer({

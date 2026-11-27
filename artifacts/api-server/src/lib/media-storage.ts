@@ -214,3 +214,7 @@ export async function removeStoredMedia(storageKey: string): Promise<void> {
   await pool.query("DELETE FROM media_object_chunks WHERE storage_key = $1", [storageKey]);
   await deleteStoredMedia(storageKey);
 }
+
+export function isCloudQuotaExceeded(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("CLOUD_QUOTA_EXCEEDED:");
+}

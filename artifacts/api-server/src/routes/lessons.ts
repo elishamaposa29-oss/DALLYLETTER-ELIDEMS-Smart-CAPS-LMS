@@ -25,7 +25,7 @@ import {
   getMediaStats,
   isAllowedMediaType,
   MAX_MEDIA_SIZE_BYTES,
-  persistUploadedMedia,
+  persistUploadedMedia, isCloudQuotaExceeded,
   streamStoredMedia,
   removeStoredMedia,
 } from "../lib/media-storage";
@@ -181,6 +181,7 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
         size: file.size,
       });
     }).catch((error) => {
+      if (isCloudQuotaExceeded(error)) { res.status(413).json({ code: "CLOUD_QUOTA_EXCEEDED", error: error instanceof Error ? error.message.split(":").slice(1).join(":").trim() : "Cloud storage quota exceeded" }); return; }
       logger.error({
         error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
         persistentStorageConfigured: isObjectStorageConfigured(),
