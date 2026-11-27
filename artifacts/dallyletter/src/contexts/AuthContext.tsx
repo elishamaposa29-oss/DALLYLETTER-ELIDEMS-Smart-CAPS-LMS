@@ -68,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!token) return;
-    const replay = () => navigator.serviceWorker?.controller?.postMessage({ type: "DALLYLETTER_REPLAY_OFFLINE_OUTBOX", authorization: "Bearer " + token });
+    const replay = () => { void navigator.serviceWorker?.ready.then(registration => (navigator.serviceWorker.controller || registration.active)?.postMessage({ type: "DALLYLETTER_REPLAY_OFFLINE_OUTBOX", authorization: "Bearer " + token })).catch(() => undefined); };
     replay();
     window.addEventListener("online", replay);
     navigator.serviceWorker?.ready.then(replay).catch(() => undefined);
