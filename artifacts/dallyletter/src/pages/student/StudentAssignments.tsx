@@ -3,6 +3,7 @@ import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { getApiUrl } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { deleteOfflineDraft, listOfflineDrafts, saveOfflineDraft } from "@/lib/offline-drafts";
+import { uploadFileResumably } from "@/lib/resumable-upload";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -105,16 +106,13 @@ export default function StudentAssignments() {
 
   const uploadSubmissionMaterial = (file: File | undefined) => {
     if (!file) return;
+    if (!user?.id || !file.type) { toast({ variant: "destructive", title: "Sign in and select a file with a supported media type." }); return; }
     setSubmissionFile(null);
     setUploadingSubmissionFile(true);
-    const body = new FormData();
-    body.append("file", file);
-    void fetch(getApiUrl("/api/assignments/submission-material"), { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body })
-      .then(async response => {
-        if (!response.ok) { const error = await response.json().catch(() => null) as { error?: string } | null; throw new Error(error?.error ?? "Attachment upload failed"); }
-        return response.json() as Promise<{ attachmentUrl: string; fileName: string }>;
-      })
-      .then(result => setSubmissionFile({ url: result.attachmentUrl, fileName: result.fileName }))
+    void uploadFileResumably(file, token(), user.id, progress => {
+      if (progress.percent < 100) toast({ title: "Uploading attachment", description: progress.percent + "% complete" });
+    })
+      .then(result => setSubmissionFile({ url: result.mediaUrl, fileName: result.fileName }))
       .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Attachment upload failed" }))
       .finally(() => setUploadingSubmissionFile(false));
   };
