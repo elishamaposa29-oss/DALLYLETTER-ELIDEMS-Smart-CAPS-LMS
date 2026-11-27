@@ -67,13 +67,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [sessionUser, fetchedUser, queryClient]);
 
   useEffect(() => {
-    if (!token || !user?.id) return;
-    const replay = () => { void navigator.serviceWorker?.ready.then(registration => (navigator.serviceWorker.controller || registration.active)?.postMessage({ type: "DALLYLETTER_REPLAY_OFFLINE_OUTBOX", authorization: "Bearer " + token, userId: user.id })).catch(() => undefined); };
+    const accountId = sessionUser?.id ?? fetchedUser?.id;
+    if (!token || !accountId) return;
+    const replay = () => { void navigator.serviceWorker?.ready.then(registration => (navigator.serviceWorker.controller || registration.active)?.postMessage({ type: "DALLYLETTER_REPLAY_OFFLINE_OUTBOX", authorization: "Bearer " + token, userId: accountId })).catch(() => undefined); };
     replay();
     window.addEventListener("online", replay);
     navigator.serviceWorker?.ready.then(replay).catch(() => undefined);
     return () => window.removeEventListener("online", replay);
-  }, [token, user?.id]);
+  }, [token, sessionUser?.id, fetchedUser?.id]);
 
   useEffect(() => {
     if (!token || !error) return;
