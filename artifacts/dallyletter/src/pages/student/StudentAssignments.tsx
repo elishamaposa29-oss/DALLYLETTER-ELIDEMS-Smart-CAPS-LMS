@@ -2,6 +2,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { getApiUrl } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { deleteOfflineDraft, listOfflineDrafts, saveOfflineDraft } from "@/lib/offline-drafts";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ export default function StudentAssignments() {
   const [submissionFile, setSubmissionFile] = useState<{ url: string; fileName: string } | null>(null);
   const [uploadingSubmissionFile, setUploadingSubmissionFile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [draftLoadedId, setDraftLoadedId] = useState<number | null>(null);
 
   const load = () => {
     void fetch(getApiUrl("/api/assignments"), { headers: { Authorization: `Bearer ${token()}` } })
@@ -68,6 +70,37 @@ export default function StudentAssignments() {
       });
   };
 
+  const openAssignment = async (assignment: any, fallbackContent = "") => {
+    setSelected(assignment); setDraftLoadedId(null); setContent(fallbackContent); setSubmissionFile(null);
+    if (user?.id) {
+      try {
+        const drafts = await listOfflineDrafts<any>(token(), user.id);
+        const draft = drafts.find(item => item.key === "assignment:" + assignment.id)?.value;
+        if (draft) { setContent(typeof draft.content === "string" ? draft.content : fallbackContent); setSubmissionFile(draft.submissionFile ?? null); }
+      } catch { /* Existing server content remains editable if local storage is unavailable. */ }
+    }
+    setDraftLoadedId(Number(assignment.id));
+  };
+
+  useEffect(() => {
+    if (!selected || !user?.id || draftLoadedId !== Number(selected.id)) return;
+    const timer = window.setTimeout(() => {
+      void saveOfflineDraft("assignment:" + selected.id, { content, submissionFile }, token(), user.id).catch(() => undefined);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [selected?.id, user?.id, draftLoadedId, content, submissionFile]);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "DALLYLETTER_OFFLINE_SUBMISSION_RESULT") return;
+      if (event.data.ok) { toast({ title: "Assignment synced successfully" }); load(); }
+      else toast({ variant: "destructive", title: "Queued assignment needs attention", description: "The server rejected the saved submission. Reopen it to review and resubmit." });
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [user?.id]);
+
   useEffect(() => { load(); }, []);
 
   const uploadSubmissionMaterial = (file: File | undefined) => {
@@ -91,19 +124,25 @@ export default function StudentAssignments() {
     if (!selected || (!content.trim() && !submissionFile)) { toast({ variant: "destructive", title: "Write an answer or attach a file first" }); return; }
     if (isOverdue(selected.dueDate)) { toast({ variant: "destructive", title: "This assignment is past its due date" }); return; }
     setSubmitting(true);
+    const idempotencyKey = crypto.randomUUID();
     void fetch(getApiUrl(`/api/assignments/${selected.id}/submit`), {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}`, "Idempotency-Key": idempotencyKey },
       body: JSON.stringify({ content, fileUrl: submissionFile?.url ?? null, fileName: submissionFile?.fileName ?? null }),
     }).then(async r => {
+      const responseBody = await r.json().catch(() => ({}));
       setSubmitting(false);
-      if (!r.ok) {
-        const error = await r.json().catch(() => null) as { error?: string } | null;
-        toast({ variant: "destructive", title: error?.error ?? "Submission failed" });
+      if (r.status === 202 && responseBody?.queued) {
+        toast({ title: "Saved offline", description: "Your assignment is queued on this device. It is not marked submitted until the server confirms sync." });
         return;
       }
+      if (!r.ok) {
+        toast({ variant: "destructive", title: responseBody?.error ?? "Submission failed" });
+        return;
+      }
+      if (user?.id) deleteOfflineDraft("assignment:" + selected.id, token(), user.id);
       toast({ title: "✅ Assignment submitted!" });
-      setSelected(null); setContent(""); setSubmissionFile(null); load();
+      setSelected(null); setContent(""); setSubmissionFile(null); setDraftLoadedId(null); load();
     }).catch(() => {
       setSubmitting(false);
       toast({ variant: "destructive", title: "Submission failed" });
@@ -188,12 +227,12 @@ export default function StudentAssignments() {
                         </div>
                       </div>
                       {!previewOnly && !sub && !overdue && (
-                        <Button size="sm" className="bg-blue-600 text-white gap-1.5" onClick={() => { setSelected(a); setContent(""); setSubmissionFile(null); }}>
+                        <Button size="sm" className="bg-blue-600 text-white gap-1.5" onClick={() => { void openAssignment(a); }}>
                           <Send className="h-3.5 w-3.5" /> Submit
                         </Button>
                       )}
                       {!previewOnly && sub && !overdue && (
-                        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setSelected(a); setContent(sub.content ?? ""); }}>
+                        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { void openAssignment(a, sub.content ?? ""); }}>
                           Resubmit / Edit
                         </Button>
                       )}
