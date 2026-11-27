@@ -56,8 +56,28 @@ function OfflineQueryCache() {
       if (!hydrated || !active || !cacheKey) return;
       if (writeTimer) clearTimeout(writeTimer);
       writeTimer = setTimeout(() => {
-        const snapshot = dehydrate(queryClient, { shouldDehydrateQuery: query => query.state.status === "success" });
-        if (cacheKey) void AsyncStorage.setItem(cacheKey, JSON.stringify(snapshot)).catch(() => {});
+        const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
+        const snapshot = dehydrate(queryClient, { shouldDehydrateQuery: query => query.state.status === "success" && query.state.dataUpdatedAt >= cutoff });
+        const bounded = { ...snapshot, queries: snapshot.queries.sort((a, b) => b.state.dataUpdatedAt - a.state.dataUpdatedAt) };
+        const serializeWithinLimit = (limit: number) => {
+          const kept: typeof bounded.queries = [];
+          let bytes = 0;
+          for (const query of bounded.queries) {
+            const size = JSON.stringify(query).length * 2;
+            if (bytes + size > limit) continue;
+            kept.push(query); bytes += size;
+          }
+          return JSON.stringify({ ...bounded, queries: kept });
+        };
+        if (cacheKey) {
+          const key = cacheKey;
+          void AsyncStorage.setItem(key, serializeWithinLimit(8 * 1024 * 1024)).catch(async () => {
+            // Recover from Android storage pressure by shrinking cached reads only.
+            // Queued submissions, drafts and user-authored learning work are stored separately.
+            try { await AsyncStorage.setItem(key, serializeWithinLimit(2 * 1024 * 1024)); }
+            catch { await AsyncStorage.removeItem(key).catch(() => undefined); }
+          });
+        }
       }, 700);
     };
     const unsubscribe = queryClient.getQueryCache().subscribe(persist);
