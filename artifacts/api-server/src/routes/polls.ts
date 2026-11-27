@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { idempotencyMiddleware } from "../lib/idempotency";
 import { requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
 import { db, pollsTable, pollQuestionsTable, pollOptionsTable, pollSubmissionsTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
@@ -199,7 +200,7 @@ router.post("/polls/:id/check-answer", requireAuth, async (req, res): Promise<vo
 });
 
 // POST /polls/:id/submit — student submits answers
-router.post("/polls/:id/submit", requireAuth, async (req, res): Promise<void> => {
+router.post("/polls/:id/submit", requireAuth, idempotencyMiddleware, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Student access required" }); return; }
   const id = parseInt(String(req.params.id));
