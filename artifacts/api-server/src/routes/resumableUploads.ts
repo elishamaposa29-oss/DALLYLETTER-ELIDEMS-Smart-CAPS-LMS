@@ -10,7 +10,9 @@ import { contiguousUploadOffset, uploadIsComplete, validateUploadChunk } from ".
 const router = Router();
 const CHUNK_BYTES = 256 * 1024;
 const MAX_UPLOAD_BYTES = isObjectStorageConfigured() ? 250 * 1024 * 1024 : 20 * 1024 * 1024;
-const SESSION_TTL_DAYS = 60;
+const SESSION_TTL_DAYS = 7;
+const MAX_ACTIVE_SESSIONS_PER_USER = 5;
+const MAX_ACTIVE_UPLOAD_BYTES_PER_USER = 100 * 1024 * 1024;
 
 function validId(value: unknown): string | null {
   const id = String(value ?? "");
@@ -23,7 +25,11 @@ router.post("/sessions", requireAuth, async (req, res): Promise<void> => {
   const mimeType = typeof req.body?.mimeType === "string" ? req.body.mimeType.split(";", 1)[0].trim().toLowerCase() : "";
   const totalBytes = Number(req.body?.totalBytes);
   if (!fileName || !isAllowedMediaType(mimeType) || !Number.isSafeInteger(totalBytes) || totalBytes < 1 || totalBytes > MAX_UPLOAD_BYTES) {
-    res.status(400).json({ error: "Provide a supported file name, media type and size up to 250 MiB." }); return;
+    res.status(400).json({ error: "Provide a supported file name, media type and size within the configured upload limit (" + Math.round(MAX_UPLOAD_BYTES / 1024 / 1024) + " MiB)." }); return;
+  }
+  const active = await pool.query("SELECT count(*)::int AS sessions,COALESCE(sum(total_bytes),0)::bigint AS bytes FROM resumable_upload_sessions WHERE user_id=$1 AND status='uploading' AND expires_at>now()", [user.id]);
+  if (Number(active.rows[0]?.sessions || 0) >= MAX_ACTIVE_SESSIONS_PER_USER || Number(active.rows[0]?.bytes || 0) + totalBytes > MAX_ACTIVE_UPLOAD_BYTES_PER_USER) {
+    res.status(429).json({ error: "Upload storage limit reached. Finish or cancel an existing upload before starting another." }); return;
   }
   const id = randomUUID();
   await pool.query(
