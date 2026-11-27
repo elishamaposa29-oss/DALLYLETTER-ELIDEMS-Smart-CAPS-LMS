@@ -19,7 +19,7 @@ export interface QueueStorage {
 
 const queueKey = (userId: number) => `dallyletter_pending_submissions_v1_user_${userId}`;
 
-function createOperationKey(): string {
+export function createSubmissionIdempotencyKey(): string {
   // Works in React Native runtimes without requiring a crypto polyfill.
   return `dl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 }
@@ -39,7 +39,7 @@ export async function enqueueSubmission(storage: QueueStorage, item: Omit<Queued
   // An identical retry is one operation; a changed payload is a separate attempt.
   const duplicate = current.find((x) => x.kind === item.kind && x.targetId === item.targetId && x.path === item.path && x.body === item.body);
   if (duplicate) return current;
-  const idempotencyKey = item.idempotencyKey || createOperationKey();
+  const idempotencyKey = item.idempotencyKey || createSubmissionIdempotencyKey();
   const id = idempotencyKey;
   const next: QueuedSubmission = { ...item, id, idempotencyKey, createdAt: new Date().toISOString(), attempts: 0 };
   const rows = [...current, next].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
