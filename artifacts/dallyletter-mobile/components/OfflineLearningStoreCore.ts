@@ -13,7 +13,8 @@ export type OfflineLearningRecord<T = unknown> = {
 };
 
 export type OfflineStorePolicy = { now?: number; retentionMs?: number; maxBytes?: number; maxEntries?: number };
-const retentionDefault = 60 * 24 * 60 * 60 * 1000;
+// Keep offline learning material for 90 days by default (well beyond the 60-day minimum).
+const retentionDefault = 90 * 24 * 60 * 60 * 1000;
 const maxBytesDefault = 8 * 1024 * 1024;
 const maxEntriesDefault = 500;
 const keyFor = (userId: number) => `dallyletter_offline_learning_v1_user_${userId}`;
