@@ -3,7 +3,7 @@ export type QueuedSubmission = {
   /** Stable across every retry of this logical submission. */
   idempotencyKey: string;
   userId: number;
-  kind: "assignment" | "exercise" | "poll";
+  kind: "assignment" | "exercise" | "poll" | "message";
   targetId: number;
   path: string;
   body: string;
