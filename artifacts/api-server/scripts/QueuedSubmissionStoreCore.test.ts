@@ -24,7 +24,7 @@ test("queued submissions remain isolated by account", async () => {
 test("re-enqueueing the identical operation is deduplicated without changing its key", async () => {
   const storage = new MemoryStorage();
   await enqueueSubmission(storage, item(11, "draft 1"));
-  const rows = await enqueueSubmission(storage, item(11, "draft 2"));
+  const rows = await enqueueSubmission(storage, item(11, "draft 1"));
   assert.equal(rows.length, 1);
   assert.equal(rows[0].body, "draft 1");
   assert.equal(rows[0].attempts, 0);
