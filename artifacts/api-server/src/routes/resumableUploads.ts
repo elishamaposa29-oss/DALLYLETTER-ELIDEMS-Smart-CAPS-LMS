@@ -28,6 +28,7 @@ router.post("/sessions", requireAuth, async (req, res): Promise<void> => {
   if (!fileName || !isAllowedMediaType(mimeType) || !Number.isSafeInteger(totalBytes) || totalBytes < 1 || totalBytes > MAX_UPLOAD_BYTES) {
     res.status(400).json({ error: "Provide a supported file name, media type and size within the configured upload limit (" + Math.round(MAX_UPLOAD_BYTES / 1024 / 1024) + " MiB)." }); return;
   }
+  await pool.query("DELETE FROM resumable_upload_sessions WHERE expires_at < now()");
   const active = await pool.query("SELECT count(*)::int AS sessions,COALESCE(sum(total_bytes),0)::bigint AS bytes FROM resumable_upload_sessions WHERE user_id=$1 AND status='uploading' AND expires_at>now()", [user.id]);
   if (Number(active.rows[0]?.sessions || 0) >= MAX_ACTIVE_SESSIONS_PER_USER || Number(active.rows[0]?.bytes || 0) + totalBytes > MAX_ACTIVE_UPLOAD_BYTES_PER_USER) {
     res.status(429).json({ error: "Upload storage limit reached. Finish or cancel an existing upload before starting another." }); return;
@@ -77,6 +78,7 @@ router.put("/sessions/:id/chunks/:index", requireAuth, async (req, res): Promise
   if (!row || Number(row.byte_offset) !== offset || row.sha256 !== sha256 || Number(row.size_bytes) !== data.length) {
     res.status(409).json({ error: "A different chunk is already stored at this offset." }); return;
   }
+  await pool.query("UPDATE resumable_upload_sessions SET expires_at=now()+interval '7 days' WHERE id=$1 AND user_id=$2", [id, req.currentUser!.id]);
   res.status(200).json({ accepted: true, index, offset, size: data.length, sha256, nextOffset: offset + data.length });
 });
 
