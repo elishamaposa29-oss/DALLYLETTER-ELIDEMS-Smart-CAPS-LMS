@@ -14,7 +14,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
-import { useAuth } from "@/contexts/AuthContext";
 import { uploadFileResumably } from "@/lib/resumable-upload";
 
 interface Poll { id: number; title: string; topic: string | null; type: string; grade: string | null; subject: string | null; mode: string; status: string; createdAt: string; }
