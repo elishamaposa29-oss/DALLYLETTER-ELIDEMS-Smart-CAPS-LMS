@@ -75,9 +75,6 @@ export async function idempotencyMiddleware(req: Request, res: Response, next: N
       }
       return res;
     }) as Response["json"];
-    res.once("close", () => {
-      if (!sent) void pool.query("UPDATE api_idempotency_records SET expires_at=now()+interval '10 minutes' WHERE user_id=$1 AND idempotency_key=$2 AND state='pending'", [userId, key]).catch(() => undefined);
-    });
     next();
   } catch {
     res.status(503).json({ error: "Idempotency protection is temporarily unavailable. No submission was accepted." });
