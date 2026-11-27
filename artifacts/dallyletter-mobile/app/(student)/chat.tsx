@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
 type ChatGroup = { id: number; name: string; description?: string | null; subject?: string; creatorName?: string; memberCount?: number; createdAt?: string; isMember?: boolean; settings?: { allowPolls?: boolean }; members?: Array<{ id: number; name?: string; role?: string; isPrefect?: boolean }> };
 import { useAuth } from "@/contexts/AuthContext";
+import { createSubmissionIdempotencyKey } from "@/components/QueuedSubmissionStoreCore";
 import { UserProfileLink } from "@/components/UserProfileLink";
 import { useColors } from "@/hooks/useColors";
 
@@ -74,7 +75,7 @@ export default function StudentChat() {
         const item = remaining[0];
         try {
           if (!Number.isSafeInteger(item.groupId) || item.groupId <= 0) { if (!cancelled) setNotice("An older offline message has no saved group destination. It was not sent to the wrong conversation."); break; }
-          await sendMutation.mutateAsync({ data: { content: item.content, type: "text", groupId: item.groupId } });
+          await sendMutation.mutateAsync({ data: { content: item.content, type: "text", groupId: item.groupId, idempotencyKey: item.idempotencyKey || item.id } as any });
           remaining.shift();
           if (!cancelled) await persistQueue([...remaining]);
         } catch {
@@ -93,13 +94,14 @@ export default function StudentChat() {
     if (!content || !user) return;
     if (selectedGroupId == null) { setNotice("Join a study group before sending a group message."); return; }
     setNotice("");
+    const idempotencyKey = createSubmissionIdempotencyKey();
     try {
-      await sendMutation.mutateAsync({ data: { content, type: "text", groupId: selectedGroupId } });
+      await sendMutation.mutateAsync({ data: { content, type: "text", groupId: selectedGroupId, idempotencyKey } as any });
       setText("");
     } catch (error) {
       const status = (error as { status?: number })?.status;
       if (!status && queueKey) {
-        const item = { id: "queued-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8), content, groupId: selectedGroupId, createdAt: new Date().toISOString(), senderId: user.id, senderName: user.name, queued: true };
+        const item = { id: "queued-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8), idempotencyKey, content, groupId: selectedGroupId, createdAt: new Date().toISOString(), senderId: user.id, senderName: user.name, queued: true };
         await persistQueue([...queuedMessages, item]);
         setText("");
         setNotice("Message saved offline. It will retry for the selected group when the connection returns.");
