@@ -1,5 +1,5 @@
 import { useCallback,useEffect,useState } from "react";
-import { ActivityIndicator,Alert,ScrollView,StyleSheet,Text,TouchableOpacity,View } from "react-native";
+import { ActivityIndicator,Alert,StyleSheet,Text,TouchableOpacity,View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { getApiUrl } from "@workspace/api-client-react";
@@ -34,3 +34,4 @@ export default function CloudStorageManager(){
   </View>
   <View style={styles.panel}><Text style={styles.title}>Saved on this device ({offlineItems.length})</Text>{offlineItems.length===0?<Text style={styles.muted}>No offline learning records are saved on this device.</Text>:offlineItems.map(item=><View key={item.kind+":"+item.id} style={styles.item}><Text style={styles.text}>{item.kind.replace("_"," ")} · {pretty(item.bytes)}</Text><Text style={styles.muted}>Last saved {new Date(item.updatedAt).toLocaleString()}</Text><TouchableOpacity onPress={()=>removeOffline(item)}><Text style={{color:"#dc2626",fontWeight:"600"}}>Remove offline copy</Text></TouchableOpacity></View>)}</View>
  </View>;
+}
