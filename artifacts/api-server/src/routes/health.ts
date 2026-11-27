@@ -15,7 +15,7 @@ const requiredTables = [
   "chat_communities", "chat_community_groups",
   "content_permission_requests", "message_media",
   "push_subscriptions", "teacher_documents",
-  "assignments", "hand_raises", "study_groups", "media_object_chunks"
+  "assignments", "hand_raises", "study_groups", "media_object_chunks", "api_idempotency_records"
 ];
 
 const requiredColumns: Array<[string, string]> = [
