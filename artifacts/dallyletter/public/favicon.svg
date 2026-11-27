@@ -2,59 +2,19 @@
   <title id="title">Dallyletter Elidems</title>
   <desc id="desc">A refined gold and platinum Dallyletter monogram on a deep navy field, representing connected knowledge and forward progress.</desc>
   <defs>
-    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#173b72"/>
-      <stop offset=".52" stop-color="#0b2044"/>
-      <stop offset="1" stop-color="#07152f"/>
-    </linearGradient>
-    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#fff4c6"/>
-      <stop offset=".2" stop-color="#e7c66c"/>
-      <stop offset=".48" stop-color="#a97818"/>
-      <stop offset=".72" stop-color="#f8e5a0"/>
-      <stop offset="1" stop-color="#9a6a12"/>
-    </linearGradient>
-    <linearGradient id="platinum" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset=".48" stop-color="#c8d7ed"/>
-      <stop offset="1" stop-color="#7189aa"/>
-    </linearGradient>
-    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
-      <stop offset=".48" stop-color="#fff" stop-opacity=".78"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-      <animate attributeName="x1" values="-1;1.4" dur="5.8s" repeatCount="indefinite"/>
-      <animate attributeName="x2" values="0;2.4" dur="5.8s" repeatCount="indefinite"/>
-    </linearGradient>
-    <filter id="depth" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
-      <feOffset dy="3" result="offset"/>
-      <feComponentTransfer><feFuncA type="linear" slope=".42"/></feComponentTransfer>
-      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#173b72"/><stop offset=".52" stop-color="#0b2044"/><stop offset="1" stop-color="#07152f"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff4c6"/><stop offset=".2" stop-color="#e7c66c"/><stop offset=".48" stop-color="#a97818"/><stop offset=".72" stop-color="#f8e5a0"/><stop offset="1" stop-color="#9a6a12"/></linearGradient>
+    <linearGradient id="platinum" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".48" stop-color="#c8d7ed"/><stop offset="1" stop-color="#7189aa"/></linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".48" stop-color="#fff" stop-opacity=".78"/><stop offset="1" stop-color="#fff" stop-opacity="0"/><animate attributeName="x1" values="-1;1.4" dur="5.8s" repeatCount="indefinite"/><animate attributeName="x2" values="0;2.4" dur="5.8s" repeatCount="indefinite"/></linearGradient>
+    <filter id="depth" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/><feOffset dy="3" result="offset"/><feComponentTransfer><feFuncA type="linear" slope=".42"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     <clipPath id="markClip"><rect x="27" y="27" width="126" height="126" rx="30"/></clipPath>
   </defs>
-
-  <rect x="3" y="3" width="174" height="174" rx="39" fill="#06142c"/>
-  <rect x="8" y="8" width="164" height="164" rx="34" fill="url(#base)" stroke="#d6b45e" stroke-opacity=".48" stroke-width="1.4"/>
-  <path d="M20 58V42Q20 20 42 20H138Q160 20 160 42V138Q160 160 138 160H42Q20 160 20 138V122" fill="none" stroke="#ffffff" stroke-opacity=".08" stroke-width="1.5"/>
-
-  <g filter="url(#depth)">
-    <!-- The open, continuous D is the signature mark. -->
-    <path d="M58 43H91C119 43 139 63 139 90S119 137 91 137H58V43Z"
-          fill="none" stroke="url(#gold)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M58 43V137" stroke="url(#platinum)" stroke-width="5" stroke-linecap="round"/>
-    <!-- Three ascending knowledge lines form a forward arrow. -->
-    <path d="M72 108H96M72 90H108M72 72H119"
-          fill="none" stroke="url(#platinum)" stroke-width="6" stroke-linecap="round"/>
-    <path d="M109 62L124 47L139 62" fill="none" stroke="url(#gold)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="139" cy="47" r="4.5" fill="#fff1bd"/>
+  <rect x="3" y="3" width="174" height="174" rx="39" fill="#06142c"/><rect x="8" y="8" width="164" height="164" rx="34" fill="url(#base)" stroke="#d6b45e" stroke-opacity=".48" stroke-width="1.4"/><path d="M20 58V42Q20 20 42 20H138Q160 20 160 42V138Q160 160 138 160H42Q20 160 20 138V122" fill="none" stroke="#ffffff" stroke-opacity=".08" stroke-width="1.5"/>
+  <g filter="url(#depth)"><path d="M58 43H91C119 43 139 63 139 90S119 137 91 137H58V43Z" fill="none" stroke="url(#gold)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M58 43V137" stroke="url(#platinum)" stroke-width="5" stroke-linecap="round"/><path d="M72 108H96M72 90H108M72 72H119" fill="none" stroke="url(#platinum)" stroke-width="6" stroke-linecap="round"/><path d="M109 62L124 47L139 62" fill="none" stroke="url(#gold)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="139" cy="47" r="4.5" fill="#fff1bd"/></g>
+  <g clip-path="url(#markClip)" opacity=".34"><path d="M-20 42L75 -20H105L10 42Z" fill="url(#shine)"><animateTransform attributeName="transform" type="translate" values="-100 0;210 0" dur="5.8s" repeatCount="indefinite"/></path></g><path d="M24 146Q90 166 156 146" fill="none" stroke="#e8c96f" stroke-opacity=".16" stroke-width="1.2"/>
+  <g id="education-accents" filter="url(#depth)" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(-18 -6) scale(1.2)"><path d="M48 29L91 12L134 29L91 46Z" fill="url(#gold)" stroke="#fff0bd" stroke-width="1.8"/><path d="M65 35L91 45L117 35V43Q91 59 65 43Z" fill="url(#gold)" stroke="#f8e5a0" stroke-width="1.5"/><path d="M91 17L126 30L91 42L56 30Z" fill="none" stroke="#fff7dc" stroke-opacity=".58" stroke-width="1.2"/><path d="M134 29V48Q134 53 139 56" fill="none" stroke="url(#gold)" stroke-width="2.8"/><path d="M135 49L139 56L143 49" fill="none" stroke="#f8e5a0" stroke-width="1.8"/><circle cx="139" cy="57" r="2.5" fill="#fff0bd" stroke="none"/></g>
+    <g transform="translate(-22 -5) rotate(18 151 96) scale(1.4 1.32)"><path d="M151 61Q155 67 155 73V112L151 130L147 112V73Q147 67 151 61Z" fill="url(#gold)" stroke="#fff0bd" stroke-width="1.5"/><path d="M148 76H154M148 82H154M148 107H154" stroke="#76500f" stroke-width="1.6"/><path d="M151 64V79M151 116V130" stroke="#fff7dc" stroke-opacity=".8" stroke-width="1.2"/><path d="M151 130L147 113Q151 116 155 113Z" fill="url(#platinum)" stroke="#fff" stroke-width=".9"/><path d="M151 130L151 118" stroke="#8a641c" stroke-width="1"/><path d="M155 72L159 78V91" fill="none" stroke="#fff0bd" stroke-width="1.8"/><circle cx="151" cy="72" r="2" fill="#fff" stroke="none"/></g>
+    <g transform="translate(-9 -13) scale(1.1 1.12)"><path d="M43 145Q65 137 89 149Q113 137 137 145V165Q112 157 90 169Q67 157 43 165Z" fill="#07152f" stroke="url(#gold)" stroke-width="2.2"/><path d="M47 147Q68 141 89 152V165Q68 155 47 161Z" fill="url(#platinum)" stroke="#fff" stroke-opacity=".65" stroke-width=".8"/><path d="M93 152Q114 141 133 147V161Q112 155 93 165Z" fill="url(#platinum)" stroke="#fff" stroke-opacity=".65" stroke-width=".8"/><path d="M90 149V167" fill="none" stroke="#a97818" stroke-width="2"/><path d="M53 150Q70 146 83 154M53 155Q70 151 83 159M98 154Q113 146 127 150M98 159Q113 151 127 155" fill="none" stroke="#7189aa" stroke-width="1.1"/><path d="M43 165Q67 160 90 169Q113 160 137 165" fill="none" stroke="#fff0bd" stroke-width="1.1"/></g>
   </g>
-
-  <g clip-path="url(#markClip)" opacity=".34">
-    <path d="M-20 42L75 -20H105L10 42Z" fill="url(#shine)">
-      <animateTransform attributeName="transform" type="translate" values="-100 0;210 0" dur="5.8s" repeatCount="indefinite"/>
-    </path>
-  </g>
-  <path d="M24 146Q90 166 156 146" fill="none" stroke="#e8c96f" stroke-opacity=".16" stroke-width="1.2"/>
 </svg>
