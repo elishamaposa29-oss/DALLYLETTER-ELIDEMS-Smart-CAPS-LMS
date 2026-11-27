@@ -173,7 +173,7 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
       return;
     }
 
-    persistUploadedMedia(file.filename, file.mimetype, file.path, { userId: Number(req.currentUser!.id), category: Number(req.query.groupId) > 0 ? "study_group" : "lesson", fileName: file.originalname }).then(() => {
+    persistUploadedMedia(file.filename, file.mimetype, file.path, { userId: Number(req.currentUser!.id), category: Number(req.query.groupId) > 0 ? "study_group" : file.mimetype.startsWith("video/") ? "video" : "lesson", fileName: file.originalname }).then(() => {
       res.status(201).json({
         mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
         storageKey: file.filename,
