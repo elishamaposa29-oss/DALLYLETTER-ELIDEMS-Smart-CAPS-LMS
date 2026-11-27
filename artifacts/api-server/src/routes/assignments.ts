@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { idempotencyMiddleware } from "../lib/idempotency";
 import multer from "multer";
 import { db, notificationsTable, auditLogsTable } from "@workspace/db";
 import { assignmentsTable, assignmentSubmissionsTable } from "@workspace/db/schema";
@@ -262,7 +263,7 @@ router.get("/:id/submissions", requireAuth, requireManagerPermissionIfManager("r
   res.json(subs);
 });
 
-router.post("/:id/submit", requireAuth, async (req, res): Promise<void> => {
+router.post("/:id/submit", requireAuth, idempotencyMiddleware, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   if (user.role !== "student") { res.status(403).json({ error: "Forbidden" }); return; }
   const assignmentId = parseInt(String(req.params.id));
