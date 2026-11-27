@@ -106,6 +106,8 @@ jobs:
         run: pnpm run db:push
       - name: Build API
         run: pnpm --dir artifacts/api-server run build
+      - name: Test owner retention preview, protected content and scheduled cleanup
+        run: pnpm --dir artifacts/api-server run test:retention-cleanup
       - name: Apply additive transfer form-data migration twice (idempotency check)
         run: pnpm --dir lib/db run migrate:transfer-form-data && pnpm --dir lib/db run migrate:transfer-form-data && pnpm --dir lib/db run migrate:payment-transactions && pnpm --dir lib/db run migrate:payment-transactions
       - name: Test payment ledger reconciliation against legacy balances and transaction drift

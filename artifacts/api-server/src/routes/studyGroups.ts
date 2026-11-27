@@ -29,6 +29,9 @@ async function canManageGroup(user: any, group: any): Promise<boolean> {
 
 async function canViewGroup(user:any,group:any):Promise<boolean>{
   if(isOwnerRole(user.role)||group.creatorId===user.id)return true;
+  const [control]=await db.select({canManageSettings:groupMemberControlsTable.canManageSettings}).from(groupMemberControlsTable)
+    .where(and(eq(groupMemberControlsTable.groupId,group.id),eq(groupMemberControlsTable.userId,user.id)));
+  if(control?.canManageSettings===true)return true;
   const [creator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
   if(!creator||isOwnerRole(creator.role))return false;
   if(canAccessManager(user))return canModerateUser(user,creator);
@@ -37,10 +40,11 @@ async function canViewGroup(user:any,group:any):Promise<boolean>{
 
 async function canManageGroupSettings(user: any, groupId: number, group?: any) {
   if (group && !(await canViewGroup(user,group))) return false;
-  if (group && await canManageGroup(user,group)) return true;
-  const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings })
+  const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings, blocked: groupMemberControlsTable.blocked, suspended: groupMemberControlsTable.suspended, muted: groupMemberControlsTable.muted })
     .from(groupMemberControlsTable)
     .where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, user.id)));
+  if (control?.blocked || control?.suspended || control?.muted) return false;
+  if (group && await canManageGroup(user,group)) return true;
   return control?.canManageSettings === true;
 }
 
@@ -107,11 +111,21 @@ router.get("/study-groups", requireAuth, async (req, res): Promise<void> => {
     const members = await getGroupMembers(g.id);
     const isMember = members.some(member => member.id === currentUser.id);
     const canManage = await canManageGroup(currentUser, g);
+    const [myControl] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings, blocked: groupMemberControlsTable.blocked, suspended: groupMemberControlsTable.suspended, muted: groupMemberControlsTable.muted }).from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId,g.id),eq(groupMemberControlsTable.userId,currentUser.id)));
+    let canChat = isOwnerRole(currentUser.role) || String(currentUser.role).toLowerCase() === "admin" || String(currentUser.role).toLowerCase() === "teacher" || isMember || Number(g.creatorId) === Number(currentUser.id) || myControl?.canManageSettings === true;
+    if (!canChat && canAccessManager(currentUser)) {
+      const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, g.creatorId));
+      canChat = Boolean(creator && canModerateUser(currentUser, creator) && ((await managerHasPermission(currentUser,"groups.manage")) || (await managerHasPermission(currentUser,"messages.send"))));
+    }
     const visibleMembers=hideOwnerMembers(currentUser,members);
     const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, g.id));
+    const canCreatePolls = !(myControl?.blocked || myControl?.suspended || myControl?.muted) && (settings?.allowPolls !== false || isOwnerRole(currentUser.role) || String(currentUser.role).toLowerCase() === "admin" || Number(g.creatorId) === Number(currentUser.id) || canManage || myControl?.canManageSettings === true);
     return {
       ...g,
       canManage,
+      canManageSettings: !(myControl?.blocked || myControl?.suspended || myControl?.muted) && (canManage || myControl?.canManageSettings === true),
+      canChat,
+      canCreatePolls,
       memberCount: visibleMembers.length,
       isMember,
       // Non-members get only a safe public profile preview: never expose email, phone,

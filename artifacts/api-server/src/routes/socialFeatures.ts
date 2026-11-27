@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { db, pool, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, contentFlagsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable } from "@workspace/db";
+import { db, pool, followsTable, notificationPreferencesTable, notificationsTable, usersTable, lessonsTable, contentCommentsTable, moderationActionsTable, auditLogsTable, contentFlagsTable, chatPollsTable, chatPollOptionsTable, chatPollVotesTable, broadcastsTable, broadcastRecipientsTable, communitiesTable, communityGroupsTable, messagesTable, studyGroupMembersTable, studyGroupsTable, groupSettingsTable, groupMemberControlsTable } from "@workspace/db";
 import { requireAuth, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { canModerateUser, isJuniorManager, normalizeRole } from "../lib/role-access";
 import { managerHasPermission, requireManagerPermission, requireManagerPermissionIfManager } from "../lib/manager-permission-policy";
@@ -106,12 +106,14 @@ export default router;
 async function canAccessChatGroup(groupId: number, userId: number, user: NonNullable<Express.Request["currentUser"]>): Promise<boolean> {
   const [group] = await db.select().from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
   if (!group) return false;
-  if (!isOwnerRole(user.role)) {
-    const [creator]=await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
-    if(!creator || isOwnerRole(creator.role)) return false;
-    if(canAccessManager(user) && !canModerateUser(user,creator)) return false;
-  }
-  if (isOwnerRole(user.role) || (canAccessManager(user) && await managerHasPermission(user, "groups.manage")) || user.isPrefect || group.creatorId === userId) return true;
+  const [creator] = await db.select({role:usersTable.role,isManager:usersTable.isManager,managerLevel:usersTable.managerLevel}).from(usersTable).where(eq(usersTable.id,group.creatorId));
+  const [explicitControl] = await db.select({canManageSettings:groupMemberControlsTable.canManageSettings}).from(groupMemberControlsTable)
+    .where(and(eq(groupMemberControlsTable.groupId,groupId),eq(groupMemberControlsTable.userId,userId)));
+  const explicitlyGranted = explicitControl?.canManageSettings === true;
+  if (!explicitlyGranted && !isOwnerRole(user.role) && (!creator || isOwnerRole(creator.role))) return false;
+  const managerCanAccess = canAccessManager(user) && ((await managerHasPermission(user, "groups.manage")) || (await managerHasPermission(user, "messages.send")));
+  if (managerCanAccess && creator && !canModerateUser(user,creator) && !explicitlyGranted) return false;
+  if (explicitlyGranted || isOwnerRole(user.role) || normalizeRole(user.role) === "admin" || managerCanAccess || user.isPrefect || group.creatorId === userId) return true;
   const [member] = await db.select({ id: studyGroupMembersTable.id }).from(studyGroupMembersTable)
     .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
   return Boolean(member);
@@ -179,7 +181,14 @@ router.post("/chat/groups/:groupId/polls", requireAuth, async(req,res):Promise<v
  const groupId=Number(req.params.groupId), user=req.currentUser!, question=typeof req.body?.question==="string"?req.body.question.trim():"", options=Array.isArray(req.body?.options)?req.body.options.filter((x:any)=>typeof x==="string"&&x.trim()).slice(0,20):[];
   if(!(await canAccessChatGroup(groupId, user.id, user))||!question||options.length<2){res.status(400).json({error:"Group member access and at least two options are required"});return;}
   const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
-  if (settings?.allowPolls === false) { res.status(403).json({ error: "Polls are disabled in this group" }); return; }
+  const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings, blocked: groupMemberControlsTable.blocked, suspended: groupMemberControlsTable.suspended, muted: groupMemberControlsTable.muted }).from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId,groupId),eq(groupMemberControlsTable.userId,user.id)));
+  if (control?.blocked || control?.suspended || control?.muted) { res.status(403).json({error:"Your group access is restricted by a moderator."}); return; }
+  if (settings?.allowPolls === false) {
+   const [group] = await db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id,groupId));
+   const delegated = control?.canManageSettings === true;
+   const privileged = isOwnerRole(user.role) || normalizeRole(user.role) === "admin" || (manager(user) && await managerHasPermission(user,"groups.manage"));
+   if (!delegated && !privileged && Number(group?.creatorId) !== Number(user.id)) { res.status(403).json({ error: "Polls are disabled for members. The group creator, an explicitly authorized group manager, or a privileged account may still create them." }); return; }
+ }
   const uniqueOptions = [...new Set(options.map((option: string) => option.trim()))];
   if (uniqueOptions.length < 2) { res.status(400).json({ error: "Poll options must be unique" }); return; }
  const autoMark = req.body?.autoMark === true;
@@ -263,11 +272,25 @@ router.post("/chat/polls/:pollId/vote", requireAuth, async(req,res):Promise<void
   if (new Set(optionIds).size !== optionIds.length) { res.status(400).json({ error: "Choose each option only once" }); return; }
  if(optionIds.length===0||(!poll.allowMultiple&&optionIds.length>1)){res.status(400).json({error:"Choose a valid option"});return;}
  const valid=await db.select().from(chatPollOptionsTable).where(eq(chatPollOptionsTable.pollId,pollId)); const validIds=new Set(valid.map((o: { id: number })=>o.id)); if(optionIds.some((id: number)=>!validIds.has(id))){res.status(400).json({error:"Invalid poll option"});return;}
- await db.transaction(async tx=>{
-  await tx.delete(chatPollVotesTable).where(and(eq(chatPollVotesTable.pollId,pollId),eq(chatPollVotesTable.userId,user.id)));
-  await tx.insert(chatPollVotesTable).values(optionIds.map((optionId: number)=>({pollId,optionId,userId:user.id})));
- });
- const marked = poll.autoMark && !poll.allowMultiple && poll.correctOptionId != null ? { isCorrect: optionIds[0] === poll.correctOptionId, correctOptionId: poll.correctOptionId, correctLabel: valid.find(option => option.id === poll.correctOptionId)?.label ?? null } : {};
+ const client=await pool.connect();
+ let current: { auto_mark: boolean; closed: boolean; allow_multiple: boolean; correct_option_id: number | null };
+ try{
+  await client.query("BEGIN");
+  const locked=await client.query("SELECT auto_mark,closed,allow_multiple,correct_option_id FROM chat_polls WHERE id=$1 FOR UPDATE",[pollId]);
+  current=locked.rows[0];
+  if(!current||current.closed){await client.query("ROLLBACK");res.status(404).json({error:"Poll unavailable"});return;}
+  const existing=await client.query("SELECT id FROM chat_poll_votes WHERE poll_id=$1 AND user_id=$2 LIMIT 1",[pollId,user.id]);
+  if(current.auto_mark&&existing.rowCount){
+   await client.query("ROLLBACK");
+   res.status(409).json({error:"This auto-marked poll accepts only one answer from each learner."});
+   return;
+  }
+  if(!current.auto_mark) await client.query("DELETE FROM chat_poll_votes WHERE poll_id=$1 AND user_id=$2",[pollId,user.id]);
+  for(const optionId of optionIds) await client.query("INSERT INTO chat_poll_votes (poll_id,option_id,user_id) VALUES ($1,$2,$3)",[pollId,optionId,user.id]);
+  await client.query("COMMIT");
+ }catch(error){await client.query("ROLLBACK").catch(()=>undefined);throw error;}finally{client.release();}
+ const correctOptionId = current.correct_option_id == null ? null : Number(current.correct_option_id);
+ const marked = Boolean(current.auto_mark) && !Boolean(current.allow_multiple) && correctOptionId != null ? { isCorrect: optionIds[0] === correctOptionId, correctOptionId, correctLabel: valid.find(option => option.id === correctOptionId)?.label ?? null } : {};
  res.json({ok:true,...marked});
 });
 

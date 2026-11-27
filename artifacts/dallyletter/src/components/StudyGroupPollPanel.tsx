@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { BarChart3, Loader2, RefreshCw, Trash2, Trophy } from "lucide-react";
 import UserProfileLink from "@/components/UserProfileLink";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 export type ChatPoll = {
   poll: { id: number; question: string; allowMultiple: boolean; closed: boolean; autoMark?: boolean; correctOptionId?: number | null; creatorId?: number; canDelete?: boolean; createdAt?: string };
@@ -17,6 +18,7 @@ export type ChatPoll = {
 type PollMarkResult = { isCorrect?: boolean; correctLabel?: string | null; correctOptionId?: number | null };
 type PollLeaderboardEntry = { rank:number; userId:number|null; name:string; avatarUrl:string|null; answers:string[] };
 export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item: ChatPoll; onVoted?: () => void; canDelete?: boolean }) {
+  const { user } = useAuth();
   const [mark, setMark] = useState<PollMarkResult | null>(null);
   const [selectedAnswerId, setSelectedAnswerId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -69,8 +71,10 @@ export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item:
   const selected = item.options.find(option => option.id === selectedAnswerId) ?? item.options.find(option => option.selected);
   const showMark = feedback?.isCorrect !== undefined || (item.poll.autoMark && item.poll.correctOptionId != null && Boolean(selected));
   const isCorrect = feedback?.isCorrect ?? selected?.id === item.poll.correctOptionId;
-  return <Card className="w-full space-y-3 p-4">
-    <div className="flex items-start justify-between gap-2"><p className="font-semibold text-sm">{item.poll.question}</p><div className="flex items-center gap-2"><span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{item.poll.closed ? "Closed" : "Active"}</span>{canDelete && <Button type="button" size="icon" variant="outline" className="h-8 w-8 shrink-0 border-2 border-red-400 bg-red-50 text-red-700 shadow-sm hover:border-red-600 hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900" aria-label="Delete poll" title={`Delete poll: ${item.poll.question}`} disabled={deleting} onClick={() => void remove()}><Trash2 className="h-4 w-4"/></Button>}</div></div>
+  const authoredByMe = Number(item.poll.creatorId) > 0 && Number(item.poll.creatorId) === Number(user?.id);
+  const oneShotAutoMarkLocked = Boolean(item.poll.autoMark && item.options.some(option => option.selected));
+  return <Card className={`w-full space-y-3 p-4 ${authoredByMe ? "border-blue-300 bg-blue-50/70 dark:border-blue-800 dark:bg-blue-950/25" : "border-border bg-card"}`}>
+    <div className="flex items-start justify-between gap-2"><p className="font-semibold text-sm">{item.poll.question}</p><div className="flex items-center gap-2"><span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{item.poll.closed ? "Closed" : "Active"}</span>{canDelete && <Button type="button" size="icon" variant="outline" className="h-6 w-6 min-h-6 min-w-6 shrink-0 border border-red-300 bg-red-50 p-0 text-red-700 shadow-none hover:border-red-500 hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900" aria-label="Delete poll" title={`Delete poll: ${item.poll.question}`} disabled={deleting} onClick={() => void remove()}><Trash2 className="h-3 w-3"/></Button>}</div></div>
     <div className="space-y-2">{item.options.map(option => {
       const isSelected = option.selected || selectedAnswerId === option.id;
       const correctOptionId = feedback?.correctOptionId ?? item.poll.correctOptionId;
@@ -82,9 +86,9 @@ export function StudyGroupPollCard({ item, onVoted, canDelete = false }: { item:
         : isWrongSelected
           ? "border-rose-500 bg-rose-100 text-rose-950"
           : isSelected ? "border-primary bg-primary/10" : "hover:bg-muted";
-      return <button key={option.id} type="button" disabled={item.poll.closed || voting} onClick={() => void vote(option.id)} className={"flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 " + answerStyle}><span>{isSelected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>;
+      return <button key={option.id} type="button" disabled={item.poll.closed || voting || (Boolean(item.poll.autoMark) && oneShotAutoMarkLocked)} onClick={() => void vote(option.id)} className={"flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 " + answerStyle}><span>{isSelected ? "✓ " : ""}{option.label}</span><span className="text-xs tabular-nums text-muted-foreground">{option.voteCount}</span></button>;
     })}</div>
-    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[11px] text-muted-foreground">{item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</p><Button type="button" size="sm" variant="outline" onClick={() => void toggleLeaderboard()}><Trophy className="mr-1.5 h-3.5 w-3.5"/> {leaderboardOpen ? "Hide leaderboard" : "Leaderboard"}</Button></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[11px] text-muted-foreground">{authoredByMe ? "Created by you" : "Created by another member"} · {item.totalVotes} vote{item.totalVotes===1?"":"s"} · {item.poll.allowMultiple?"Multiple choices":"Choose one"}</p><Button type="button" size="sm" variant="outline" onClick={() => void toggleLeaderboard()}><Trophy className="mr-1.5 h-3.5 w-3.5"/> {leaderboardOpen ? "Hide leaderboard" : "Leaderboard"}</Button></div>
     {voting && item.poll.autoMark && <p role="status" aria-live="polite" className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-900">Answer received — checking your result…</p>}
     {showMark && <p role="status" aria-live="polite" className={"rounded-md border p-3 text-xs font-semibold " + (isCorrect ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-rose-300 bg-rose-50 text-rose-900")}>{isCorrect ? "✓ Correct answer!" : "✕ Incorrect. Correct answer: " + (feedback?.correctLabel ?? item.options.find(option => option.id === item.poll.correctOptionId)?.label ?? "See teacher feedback")}</p>}
     {leaderboardOpen && <section className="space-y-2 rounded-lg border bg-muted/20 p-3" aria-label="Poll leaderboard"><h4 className="flex items-center gap-2 text-xs font-bold"><Trophy className="h-4 w-4"/> Poll leaderboard · {leaderboard.length} participant{leaderboard.length===1?"":"s"}</h4>

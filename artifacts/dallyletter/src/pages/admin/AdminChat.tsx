@@ -4,7 +4,7 @@ import { useListMessages, useSendMessage, useListStudyGroups, useListUsers, getA
 import { AuthenticatedAudio } from "@/components/AuthenticatedAudio";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Send, Users, MessageSquare, User, ShieldAlert, Trash2 } from "lucide-react";
+import { Loader2, Send, Users, MessageSquare, User, ShieldAlert, Trash2, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useRef, useEffect } from "react";
@@ -13,19 +13,22 @@ import { getListMessagesQueryKey } from "@workspace/api-client-react";
 import { SendMessageBodyType } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { VoiceRecorder } from "@/components/VoiceRecorder";
 
 export default function AdminChat() {
   const { user } = useAuth();
+  const isOperationalAdmin = String(user?.role || "").trim().toLowerCase() === "admin";
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("groupId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => { const value = new URLSearchParams(window.location.search).get("recipientId"); return value && /^\d+$/.test(value) ? Number(value) : null; });
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState("users");
+  useEffect(() => { if (isOperationalAdmin) setActiveTab("groups"); }, [isOperationalAdmin]);
   const [groupHubOpen,setGroupHubOpen]=useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
   const { data: groups, isLoading: groupsLoading } = useListStudyGroups();
-  const { data: users, isLoading: usersLoading } = useListUsers();
+  const { data: users, isLoading: usersLoading } = useListUsers({ query: { enabled: !isOperationalAdmin } } as any);
   
   const { data: messages, isLoading: messagesLoading } = useListMessages(
     { groupId: selectedGroupId, recipientId: selectedUserId },
@@ -78,6 +81,37 @@ export default function AdminChat() {
     });
   };
 
+  const handleSendMedia = async (file: File) => {
+    if (!selectedGroupId && !selectedUserId) throw new Error("Select a conversation before attaching learning media.");
+    const body = new FormData();
+    if (selectedGroupId) body.append("groupId", String(selectedGroupId));
+    if (selectedUserId) body.append("recipientId", String(selectedUserId));
+    body.append("file", file, file.name);
+    const token = localStorage.getItem("dallyletter_token");
+    const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body });
+    const result = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
+    if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error ?? "Attachment upload failed.");
+    await sendMessageMutation.mutateAsync({ data: { content: file.name, type: "media" as SendMessageBodyType, groupId: selectedGroupId, recipientId: selectedUserId, mediaUrl: result.mediaUrl } });
+    await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+  };
+
+  const handleSendVoice = async (audio: Blob) => {
+    if (!selectedGroupId && !selectedUserId) throw new Error("Select a conversation before sending a voice message.");
+    const body = new FormData();
+    if (selectedGroupId) body.append("groupId", String(selectedGroupId));
+    if (selectedUserId) body.append("recipientId", String(selectedUserId));
+    body.append("file", audio, "voice-message.webm");
+    const token = localStorage.getItem("dallyletter_token");
+    const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body });
+    if (!upload.ok) {
+      const result = await upload.json().catch(() => null) as { error?: string } | null;
+      throw new Error(result?.error ?? "Voice upload failed.");
+    }
+    const { mediaUrl } = await upload.json() as { mediaUrl: string };
+    await sendMessageMutation.mutateAsync({ data: { content: "Voice message", type: SendMessageBodyType.voice, groupId: selectedGroupId, recipientId: selectedUserId, mediaUrl } });
+    await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+  };
+
   const selectGroup = (id: number) => {
     setSelectedGroupId(id);
     setSelectedUserId(null);
@@ -94,8 +128,8 @@ export default function AdminChat() {
         <Card className="w-full md:w-1/3 flex flex-col bg-card/50 h-1/3 md:h-full shrink-0">
           <div className="p-4 border-b">
              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="w-full grid grid-cols-2">
-                <TabsTrigger value="users">Users</TabsTrigger>
+              <TabsList className={`w-full grid ${isOperationalAdmin ? "grid-cols-1" : "grid-cols-2"}`}>
+                {!isOperationalAdmin && <TabsTrigger value="users">Users</TabsTrigger>}
                 <TabsTrigger value="groups">Groups</TabsTrigger>
               </TabsList>
             </Tabs>
@@ -214,13 +248,21 @@ export default function AdminChat() {
                     );
                   })
                 )}
-                {selectedGroupId != null && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={(groups?.find(g => g.id === selectedGroupId) as any)?.settings?.allowPolls !== false} />}
+                {selectedGroupId != null && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={Boolean((groups?.find(g => g.id === selectedGroupId) as any)?.canCreatePolls)} />}
                 <div ref={messagesEndRef} />
               </div>
 
               {/* Input Area */}
               <div className="p-4 border-t bg-card">
                 <form onSubmit={handleSendMessage} className="flex gap-2 items-center">
+                  <label className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full border bg-background hover:bg-muted" title="Attach learning media">
+                    <Paperclip className="h-4 w-4" />
+                    <input type="file" className="sr-only" accept="image/*,video/*,application/pdf,.doc,.docx" onChange={event => {
+                      const file = event.target.files?.[0]; event.target.value = "";
+                      if (file) void handleSendMedia(file).catch(error => window.alert(error instanceof Error ? error.message : "Attachment failed."));
+                    }} />
+                  </label>
+                  <VoiceRecorder onSend={handleSendVoice} isSending={sendMessageMutation.isPending} />
                   <Input 
                     placeholder="Type an admin message..." 
                     className="flex-1 bg-muted/50 border-transparent focus-visible:bg-background"

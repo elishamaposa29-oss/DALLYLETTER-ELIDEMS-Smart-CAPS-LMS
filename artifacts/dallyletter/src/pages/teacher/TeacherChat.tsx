@@ -31,6 +31,11 @@ export default function TeacherChat() {
   const queryClient = useQueryClient();
 
   const { data: groups, isLoading: groupsLoading } = useListStudyGroups({ query: { enabled: !restrictedApplicant } } as any);
+  useEffect(() => {
+    if (groups && selectedGroupId != null && !groups.some((group:any) => group.id === selectedGroupId && (group.canChat === true || group.canManage === true))) {
+      setSelectedGroupId(null);
+    }
+  }, [groups, selectedGroupId]);
   const { data: users, isLoading: usersLoading } = useListUsers({ query: { enabled: !restrictedApplicant } } as any);
 
   const { data: messages, isLoading: messagesLoading } = useListMessages(
@@ -127,7 +132,7 @@ export default function TeacherChat() {
   const selectUser = (id: number) => { setSelectedUserId(id); setSelectedGroupId(null); };
 
   const chatTitle = selectedGroupId
-    ? groups?.find(g => g.id === selectedGroupId)?.name
+    ? groups?.find((g:any) => g.id === selectedGroupId && (g.canChat === true || g.canManage === true))?.name
      : (ownerContact?.id===selectedUserId?ownerContact.name:users?.find(u => u.id === selectedUserId)?.name);
 
   return (
@@ -209,7 +214,7 @@ export default function TeacherChat() {
                   <p className="text-sm text-muted-foreground">No study groups yet.</p>
                 </div>
               ) : (
-                groups?.map(group => (
+                groups?.filter((group:any) => group.canChat === true || group.canManage === true).map(group => (
                   <button
                     key={group.id}
                     onClick={() => selectGroup(group.id)}
@@ -310,14 +315,14 @@ export default function TeacherChat() {
                               )}
                             </div>
                             <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground"><span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>{isMe&&((msg as any).readByUserIds?.length??0)>0&&<span className="font-semibold text-[#9A7020]" aria-label={selectedGroupId?"Seen by "+(msg as any).readByUserIds.length+" group members":"Seen"}>{selectedGroupId?"Seen by "+(msg as any).readByUserIds.length:"Seen"} ✓✓</span>}</div>
-                            {(isMe || (selectedGroupId != null && (groups?.find(g => g.id === selectedGroupId) as any)?.canManage === true)) && <button type="button" aria-label="Delete message" title="Delete message" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id}>{deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}
+                            {(isMe || (selectedGroupId != null && (groups?.find((g:any) => g.id === selectedGroupId && (g.canChat === true || g.canManage === true)) as any)?.canManage === true)) && <button type="button" aria-label="Delete message" title="Delete message" className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-50" onClick={() => void handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id}>{deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete</button>}
                           </div>
                         </div>
                       </div>
                     );
                   })
                 )}
-                {selectedGroupId != null && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={(groups?.find(g => g.id === selectedGroupId) as any)?.settings?.allowPolls !== false} />}
+                {selectedGroupId != null && <StudyGroupPollPanel groupId={selectedGroupId} allowPolls={Boolean((groups?.find(g => g.id === selectedGroupId) as any)?.canCreatePolls)} />}
                 <div ref={messagesEndRef} />
               </div>
 

@@ -78,7 +78,8 @@ export default function ManagerDashboard(){
      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open manager account settings" onPress={()=>router.push("/(manager)/profile" as any)} style={{paddingHorizontal:11,paddingVertical:8,borderRadius:9,backgroundColor:"rgba(255,255,255,0.16)",flexDirection:"row",alignItems:"center",gap:6}}><Feather name="user" size={15} color="#fff"/><Text style={{color:"#fff",fontSize:12,fontWeight:"700"}}>Account</Text></TouchableOpacity>
     </View>
    </View>
-   <Text style={s.title}>Manager dashboard</Text><Text style={s.subtitle}>Scoped school oversight · access remains server-authorized</Text>
+   <Text style={s.title}>Manager dashboard</Text>
+    {(can("messages.send")||can("groups.manage")||permissionData?.isOwner===true)?<TouchableOpacity accessibilityRole="button" accessibilityLabel="Open study groups and group chat" onPress={()=>router.push("/(manager)/group-chat" as any)} style={{marginTop:12,paddingHorizontal:12,paddingVertical:9,borderRadius:9,backgroundColor:"rgba(255,255,255,0.16)",flexDirection:"row",alignItems:"center",gap:7}}><Feather name="message-circle" size={16} color="#fff"/><Text style={{color:"#fff",fontSize:12,fontWeight:"700"}}>Study Groups & Chat</Text></TouchableOpacity>:null}<Text style={s.subtitle}>Scoped school oversight · access remains server-authorized</Text>
   </View>
   <ScrollView contentContainerStyle={s.content}>
    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7}}>{panels.filter(p=>p.id==="overview"?can("manager.dashboard.view"):p.id==="reports"?can("reports.view"):can("users.view")).map(p=><TouchableOpacity key={p.id} style={[s.chip,{backgroundColor:panel===p.id?colors.primary:colors.card}]} onPress={()=>setPanel(p.id)}><Text style={{color:panel===p.id?"#fff":colors.foreground}}>{p.title}</Text></TouchableOpacity>)}</ScrollView>

@@ -280,6 +280,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       { label: "Profile Hub", href: "/profile-hub", icon: Users },
       { label: "Class & Learning Operations", href: "/operations", icon: CalendarDays },
       { label: "Feature Preview Center", href: "/features", icon: Sparkles },
+      { label: "Study Groups", href: "/student/study-groups", icon: Users },
+      { label: "Group Chat", href: "/admin/chat", icon: MessageSquare },
     ];
   } else if (["owner","platform_owner"].includes(normalizedRole)) {
     navItems = [

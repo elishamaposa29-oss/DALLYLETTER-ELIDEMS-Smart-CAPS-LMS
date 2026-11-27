@@ -16,7 +16,8 @@
     "start:api": "pnpm run start",
     "backfill:enrollments": "node ./scripts/backfill-enrollments.mjs",
     "test:ai-provider": "node ./scripts/test-ai-provider-http.mjs && node ./scripts/test-ai-provider-model.mjs",
-    "test:teacher-cv-workflow": "node ./scripts/test-teacher-cv-workflow.mjs"
+    "test:teacher-cv-workflow": "node ./scripts/test-teacher-cv-workflow.mjs",
+    "test:retention-cleanup": "node ./scripts/test-retention-cleanup.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
@@ -27,7 +28,8 @@
     "express": "^5",
     "multer": "^2.0.2",
     "pino": "^9",
-    "pino-http": "^10"
+    "pino-http": "^10",
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

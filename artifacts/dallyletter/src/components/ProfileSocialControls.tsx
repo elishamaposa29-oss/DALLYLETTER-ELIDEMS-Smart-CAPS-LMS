@@ -6,7 +6,7 @@ import { MessageCircle, Users, ShieldCheck, Save, Check, UserPlus, UserMinus } f
 type PrivacyMode = "me_only_authorized" | "selected_friends" | "everyone";
 type SectionSetting = { mode: PrivacyMode; selectedUserIds: number[] };
 type Friend = { id: number; name: string; role: string; connectionId:number; recentlySelected?:boolean; selectionCount?:number };
-type RequestRow = { id: number; requester_id: number; requester_name: string; requester_role: string; created_at: string };
+type RequestRow = { id: number; requester_id: number; requester_name: string; requester_role: string; requester_avatar_url?: string | null; created_at: string };
 
 const sections = [
   ["overview","Profile overview"],["qualifications","Qualifications / CV"],["subjects","Subjects"],["enrollments","Enrollments / classes"],
@@ -130,7 +130,7 @@ export function ProfileSocialControls({profileId,isSelf,role}:{profileId:number|
     {isSelf&&requests.length>0&&<section aria-label="Pending connection requests" className="fixed bottom-4 left-4 z-[83] max-h-[min(52dvh,420px)] w-[min(94vw,390px)] overflow-y-auto rounded-xl border-2 border-[#A87919] bg-background p-3 shadow-2xl">
       <h3 className="mb-2 flex items-center gap-2 font-bold text-[#0f2a5a]"><Users className="h-4 w-4"/>Connection requests <span className="rounded-full bg-[#0f2a5a] px-2 py-0.5 text-xs text-white">{requests.length}</span></h3>
       {requests.map(request=><div key={request.id} className="flex flex-wrap items-center justify-between gap-2 border-t py-3 first:border-0">
-        <div className="min-w-0"><p className="text-sm font-semibold">{request.requester_name}</p><p className="text-xs text-muted-foreground">{request.requester_role} · {new Date(request.created_at).toLocaleString()}</p></div>
+        <div className="flex min-w-0 flex-1 items-center gap-3"><a href={"/profile/"+request.requester_id} aria-label={"Open "+request.requester_name+" profile"} className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full border bg-muted text-sm font-bold text-primary">{request.requester_avatar_url ? <img src={request.requester_avatar_url} alt="" className="h-full w-full object-cover"/> : request.requester_name.slice(0,1).toUpperCase()}</a><div className="min-w-0"><a href={"/profile/"+request.requester_id} className="truncate text-sm font-semibold hover:underline">{request.requester_name}</a><p className="text-xs text-muted-foreground">{request.requester_role} · {new Date(request.created_at).toLocaleString()}</p></div></div>
         <div className="flex gap-2">
           <button type="button" disabled={busy} onClick={()=>void decide(request.id,"accepted")} aria-label={"Approve connection from "+request.requester_name} className="rounded-md bg-[#0f2a5a] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Check className="mr-1 inline h-3 w-3"/>Approve</button>
           <button type="button" disabled={busy} onClick={()=>void decide(request.id,"rejected")} aria-label={"Reject connection from "+request.requester_name} className="rounded-md border border-red-500 px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50">Reject</button>

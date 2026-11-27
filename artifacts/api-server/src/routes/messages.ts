@@ -50,14 +50,41 @@ const voiceUpload = multer({
   fileFilter: (_req, file, callback) => callback(null, isAllowedMediaType(file.mimetype)),
 });
 
-async function canAccessGroup(groupId: number, userId: number, role: string): Promise<boolean> {
-  const [group] = await db.select({ id: studyGroupsTable.id }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+async function canAccessGroup(groupId: number, user: NonNullable<Express.Request["currentUser"]>): Promise<boolean> {
+  const [group] = await db.select({ id: studyGroupsTable.id, creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
   if (!group) return false;
-  if (normalizeRole(role) === "teacher" || isOwnerRole(role)) return true;
+  const [explicitControl] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings }).from(groupMemberControlsTable)
+    .where(and(eq(groupMemberControlsTable.groupId,groupId),eq(groupMemberControlsTable.userId,user.id)));
+  if (explicitControl?.canManageSettings === true) return true;
+  if (normalizeRole(user.role) === "teacher" || isOwnerRole(user.role)) return true;
+  if (normalizeRole(user.role) === "admin") {
+    const [creator] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, group.creatorId));
+    return Boolean(creator && !isOwnerRole(creator.role));
+  }
   const [membership] = await db.select({ id: studyGroupMembersTable.id })
     .from(studyGroupMembersTable)
-    .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, userId)));
-  return Boolean(membership);
+    .where(and(eq(studyGroupMembersTable.groupId, groupId), eq(studyGroupMembersTable.userId, user.id)));
+  if (membership || Number(group.creatorId) === Number(user.id)) return true;
+  const managerCanAccess = canAccessManager(user) && ((await managerHasPermission(user, "groups.manage")) || (await managerHasPermission(user, "messages.send")));
+  if (!managerCanAccess) return false;
+  const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel })
+    .from(usersTable).where(eq(usersTable.id, group.creatorId));
+  return Boolean(creator && canModerateUser(user, creator));
+}
+
+async function canOverrideGroupSettings(groupId: number, user: NonNullable<Express.Request["currentUser"]>): Promise<boolean> {
+  if (isOwnerRole(user.role) || normalizeRole(user.role) === "admin") return true;
+  const [group] = await db.select({ creatorId: studyGroupsTable.creatorId }).from(studyGroupsTable).where(eq(studyGroupsTable.id, groupId));
+  if (!group) return false;
+  if (Number(group.creatorId) === Number(user.id)) return true;
+  const [control] = await db.select({ canManageSettings: groupMemberControlsTable.canManageSettings })
+    .from(groupMemberControlsTable)
+    .where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, user.id)));
+  if (control?.canManageSettings === true) return true;
+  if (!canAccessManager(user) || !(await managerHasPermission(user, "groups.manage"))) return false;
+  const [creator] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel })
+    .from(usersTable).where(eq(usersTable.id, group.creatorId));
+  return Boolean(creator && canModerateUser(user, creator));
 }
 
 async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
@@ -130,7 +157,7 @@ router.post("/messages/media", requireAuth, (req, res): void => {
       const validTarget = (groupId != null && recipientId == null) || (groupId == null && recipientId != null);
       const allowed = validTarget
         && (groupId != null
-          ? await canAccessGroup(groupId, currentUser.id, currentUser.role)
+          ? await canAccessGroup(groupId, currentUser)
           : await canMessageUser(currentUser, recipientId!));
       if (!allowed) {
         await removeStoredMedia(req.file.filename);
@@ -140,7 +167,8 @@ router.post("/messages/media", requireAuth, (req, res): void => {
       if (groupId != null) {
         const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
         const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
-        if (settings?.allowMedia === false || control?.mediaBlocked || control?.blocked || control?.suspended || control?.muted) {
+        const settingsOverride = await canOverrideGroupSettings(groupId, currentUser);
+        if (control?.mediaBlocked || control?.blocked || control?.suspended || control?.muted || (settings?.allowMedia === false && !settingsOverride)) {
           await removeStoredMedia(req.file.filename);
           res.status(403).json({ error: "Media uploads are disabled for you in this group" });
           return;
@@ -172,7 +200,7 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
   const user = req.currentUser!;
   if (isProfileOnlyTeacher(user) && message.groupId != null) { res.status(403).json({ error: "Group media is unavailable until teacher authorization." }); return; }
   const allowed = message.groupId != null
-    ? await canAccessGroup(message.groupId, user.id, user.role)
+    ? await canAccessGroup(message.groupId, user)
     : message.recipientId != null && (isOwnerRole(user.role) || ((message.recipientId === user.id || message.senderId === user.id) && await canViewPrivateConversation(user, message.senderId === user.id ? message.recipientId : message.senderId)));
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
   try {
@@ -200,49 +228,16 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
 router.get("/messages/unread-summary", requireAuth, async (req, res): Promise<void> => {
   const user = req.currentUser!;
   res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
-  const groups = await pool.query(`
-    SELECT m.group_id AS conversation_id, count(*)::int AS unread_count
-    FROM messages m
-    INNER JOIN study_group_members gm ON gm.group_id=m.group_id AND gm.user_id=$1
-    LEFT JOIN message_conversation_reads r ON r.user_id=$1 AND r.conversation_type='group' AND r.conversation_id=m.group_id
-    WHERE m.group_id IS NOT NULL AND m.sender_id<>$1 AND m.created_at>COALESCE(r.last_read_at,'epoch'::timestamptz)
-    GROUP BY m.group_id
-  `, [user.id]);
-  const privateChats = await pool.query(`
-    SELECT m.sender_id AS conversation_id, count(*)::int AS unread_count
-    FROM messages m
-    LEFT JOIN message_conversation_reads r ON r.user_id=$1 AND r.conversation_type='private' AND r.conversation_id=m.sender_id
-    WHERE m.group_id IS NULL AND m.recipient_id=$1 AND m.created_at>COALESCE(r.last_read_at,'epoch'::timestamptz)
-    GROUP BY m.sender_id
-  `, [user.id]);
-  // Conversation priority is based only on chats the authenticated user actually belongs to.
-  // Group history is limited by membership; private history is limited to either side of this user's DMs.
-  const recentGroups = await pool.query(`
-    SELECT m.group_id AS conversation_id, COUNT(*)::int AS message_count, MAX(m.created_at) AS last_message_at
-    FROM messages m
-    INNER JOIN study_group_members gm ON gm.group_id=m.group_id AND gm.user_id=$1
-    WHERE m.group_id IS NOT NULL
-    GROUP BY m.group_id
-    ORDER BY COUNT(*) DESC, MAX(m.created_at) DESC
-  `, [user.id]);
-  const recentPeople = await pool.query(`
-    SELECT CASE WHEN m.sender_id=$1 THEN m.recipient_id ELSE m.sender_id END AS conversation_id,
-           COUNT(*)::int AS message_count, MAX(m.created_at) AS last_message_at
-    FROM messages m
-    WHERE m.group_id IS NULL AND m.recipient_id IS NOT NULL
-      AND (m.sender_id=$1 OR m.recipient_id=$1)
-    GROUP BY CASE WHEN m.sender_id=$1 THEN m.recipient_id ELSE m.sender_id END
-    ORDER BY COUNT(*) DESC, MAX(m.created_at) DESC
-  `, [user.id]);
+  const allGroups = await db.select({ id: studyGroupsTable.id }).from(studyGroupsTable);
+  const accessibleGroupIds: number[] = [];
+  for (const group of allGroups) if (await canAccessGroup(group.id, user)) accessibleGroupIds.push(group.id);
+  const groups = accessibleGroupIds.length ? await pool.query("SELECT m.group_id AS conversation_id,count(*)::int AS unread_count FROM messages m LEFT JOIN message_conversation_reads r ON r.user_id=$1 AND r.conversation_type='group' AND r.conversation_id=m.group_id WHERE m.group_id=ANY($2::int[]) AND m.sender_id<>$1 AND m.created_at>COALESCE(r.last_read_at,'epoch'::timestamptz) GROUP BY m.group_id",[user.id,accessibleGroupIds]) : {rows:[] as any[]};
+  const privateChats = await pool.query("SELECT m.sender_id AS conversation_id,count(*)::int AS unread_count FROM messages m LEFT JOIN message_conversation_reads r ON r.user_id=$1 AND r.conversation_type='private' AND r.conversation_id=m.sender_id WHERE m.group_id IS NULL AND m.recipient_id=$1 AND m.created_at>COALESCE(r.last_read_at,'epoch'::timestamptz) GROUP BY m.sender_id",[user.id]);
+  const recentGroups = accessibleGroupIds.length ? await pool.query("SELECT m.group_id AS conversation_id,COUNT(*)::int AS message_count,MAX(m.created_at) AS last_message_at FROM messages m WHERE m.group_id=ANY($1::int[]) GROUP BY m.group_id ORDER BY COUNT(*) DESC,MAX(m.created_at) DESC",[accessibleGroupIds]) : {rows:[] as any[]};
+  const recentPeople = await pool.query("SELECT CASE WHEN m.sender_id=$1 THEN m.recipient_id ELSE m.sender_id END AS conversation_id,COUNT(*)::int AS message_count,MAX(m.created_at) AS last_message_at FROM messages m WHERE m.group_id IS NULL AND m.recipient_id IS NOT NULL AND (m.sender_id=$1 OR m.recipient_id=$1) GROUP BY CASE WHEN m.sender_id=$1 THEN m.recipient_id ELSE m.sender_id END ORDER BY COUNT(*) DESC,MAX(m.created_at) DESC",[user.id]);
   const groupUnread=groups.rows.reduce((sum,row)=>sum+Number(row.unread_count||0),0);
   const privateUnread=privateChats.rows.reduce((sum,row)=>sum+Number(row.unread_count||0),0);
-  res.json({
-    groupUnread, privateUnread, messageUnread:groupUnread+privateUnread,
-    groups:groups.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),
-    privateChats:privateChats.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),
-    recentGroups:recentGroups.rows.map(row=>({id:Number(row.conversation_id),messageCount:Number(row.message_count),lastMessageAt:row.last_message_at})),
-    recentPeople:recentPeople.rows.map(row=>({id:Number(row.conversation_id),messageCount:Number(row.message_count),lastMessageAt:row.last_message_at})),
-  });
+  res.json({groupUnread,privateUnread,messageUnread:groupUnread+privateUnread,groups:groups.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),privateChats:privateChats.rows.map(row=>({id:Number(row.conversation_id),unread:Number(row.unread_count)})),recentGroups:recentGroups.rows.map(row=>({id:Number(row.conversation_id),messageCount:Number(row.message_count),lastMessageAt:row.last_message_at})),recentPeople:recentPeople.rows.map(row=>({id:Number(row.conversation_id),messageCount:Number(row.message_count),lastMessageAt:row.last_message_at}))});
 });
 
 router.get("/messages", requireAuth, async (req, res): Promise<void> => {
@@ -267,7 +262,7 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
 
   let messages;
   if (groupId != null) {
-    if (!(await canAccessGroup(groupId, currentUser.id, currentUser.role))) {
+    if (!(await canAccessGroup(groupId, currentUser))) {
       res.status(403).json({ error: "You must be a group member to view its messages" });
       return;
     }
@@ -321,7 +316,7 @@ router.get("/messages", requireAuth, async (req, res): Promise<void> => {
   // alongside each message so the sender sees a receipt on the exact message.
   const readCursors = groupId != null
     ? await pool.query(
-        "SELECT r.user_id,r.last_read_at FROM message_conversation_reads r INNER JOIN study_group_members gm ON gm.user_id=r.user_id AND gm.group_id=$1 WHERE r.conversation_type='group' AND r.conversation_id=$1",
+        "SELECT user_id,last_read_at FROM message_conversation_reads WHERE conversation_type='group' AND conversation_id=$1",
         [groupId],
       )
     : await pool.query(
@@ -392,7 +387,7 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  if (parsed.data.groupId != null && !(await canAccessGroup(parsed.data.groupId, currentUser.id, currentUser.role))) {
+  if (parsed.data.groupId != null && !(await canAccessGroup(parsed.data.groupId, currentUser))) {
     res.status(403).json({ error: "You must be a group member to post messages" });
     return;
   }
@@ -433,8 +428,9 @@ router.post("/messages", requireAuth, async (req, res): Promise<void> => {
     const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, parsed.data.groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
     const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, parsed.data.groupId));
     if (control?.blocked || control?.suspended || control?.muted) { res.status(403).json({ error: "You are restricted from messaging in this group" }); return; }
-    if ((parsed.data.type === "voice" || parsed.data.type === "media") && (control?.mediaBlocked || settings?.allowMedia === false)) { res.status(403).json({ error: "Media uploads are disabled for you in this group" }); return; }
-    if (settings?.announcementsOnly && !(isOwnerRole(currentUser.role) || currentUser.isManager || currentUser.isPrefect)) {
+    const settingsOverride = await canOverrideGroupSettings(parsed.data.groupId, currentUser);
+    if ((parsed.data.type === "voice" || parsed.data.type === "media") && (control?.mediaBlocked || control?.blocked || control?.suspended || control?.muted || (settings?.allowMedia === false && !settingsOverride))) { res.status(403).json({ error: "Media uploads are disabled for you in this group" }); return; }
+    if (settings?.announcementsOnly && !(settingsOverride || currentUser.isPrefect === true)) {
       res.status(403).json({ error: "Only group moderators can post announcements in this group" });
       return;
     }
@@ -496,7 +492,7 @@ router.post("/messages/:id/report", requireAuth, async (req, res): Promise<void>
 
   const [message] = await db.select().from(messagesTable).where(eq(messagesTable.id, messageId));
   const reporter = req.currentUser!;
-  const isGroupMessageVisible = Boolean(message && message.groupId != null && await canAccessGroup(message.groupId, reporter.id, reporter.role));
+  const isGroupMessageVisible = Boolean(message && message.groupId != null && await canAccessGroup(message.groupId, reporter));
   const otherParticipantId = message
     ? Number(message.senderId) === reporter.id ? message.recipientId : message.senderId
     : null;
