@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { pool } from "@workspace/db";
-import { hashIdempotentRequest, isValidIdempotencyKey } from "./idempotency-core";
+import { classifyIdempotencyRecord, hashIdempotentRequest, isValidIdempotencyKey } from "./idempotency-core";
 
 let schemaReady: Promise<void> | null = null;
 async function ensureSchema(): Promise<void> {
@@ -45,14 +45,15 @@ export async function idempotencyMiddleware(req: Request, res: Response, next: N
       );
       const record = existing.rows[0];
       if (!record) { res.status(409).json({ error: "Idempotency record is being recovered; retry with the same key shortly." }); return; }
-      if (record.request_hash !== requestHash) { res.status(409).json({ error: "This Idempotency-Key was already used with a different request body." }); return; }
-      if (record.state !== "complete" || record.response_status == null) {
+      const decision = classifyIdempotencyRecord({ requestHash:record.request_hash, state:record.state, responseStatus:record.response_status == null ? null : Number(record.response_status), responseBody:record.response_body }, requestHash);
+      if (decision.kind === "conflict") { res.status(409).json({ error: "This Idempotency-Key was already used with a different request body." }); return; }
+      if (decision.kind === "pending") {
         res.setHeader("Retry-After", "3");
         res.status(409).json({ error: "An operation with this key is still processing. Retry with the same key." });
         return;
       }
       res.setHeader("Idempotency-Replayed", "true");
-      res.status(Number(record.response_status)).json(record.response_body);
+      res.status(decision.status).json(decision.body);
       return;
     }
 
