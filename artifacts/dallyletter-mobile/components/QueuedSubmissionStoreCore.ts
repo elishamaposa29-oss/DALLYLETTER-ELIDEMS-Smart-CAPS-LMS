@@ -18,6 +18,8 @@ export interface QueueStorage {
 }
 
 const queueKey = (userId: number) => `dallyletter_pending_submissions_v1_user_${userId}`;
+const MAX_PENDING_SUBMISSIONS = 100;
+const MAX_PENDING_BYTES = 5 * 1024 * 1024;
 
 export function createSubmissionIdempotencyKey(): string {
   // Works in React Native runtimes without requiring a crypto polyfill.
@@ -51,7 +53,9 @@ export async function enqueueSubmission(storage: QueueStorage, item: Omit<Queued
   const id = idempotencyKey;
   const next: QueuedSubmission = { ...item, id, idempotencyKey, createdAt: new Date().toISOString(), attempts: 0 };
   const rows = [...current, next].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  await storage.setItem(queueKey(item.userId), JSON.stringify(rows));
+  const serialized = JSON.stringify(rows);
+  if (rows.length > MAX_PENDING_SUBMISSIONS || new TextEncoder().encode(serialized).byteLength > MAX_PENDING_BYTES) throw new Error("Offline submission storage is full. Reconnect and sync pending work before adding more.");
+  await storage.setItem(queueKey(item.userId), serialized);
   return rows;
 }
 
