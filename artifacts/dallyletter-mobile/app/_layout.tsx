@@ -101,8 +101,12 @@ function OfflineQueryCache() {
         const serializedCache = await AsyncStorage.getItem(cacheKey);
         if (!active || sequence !== switchSequence) return;
         if (serializedCache) {
-          try { hydrate(queryClient, JSON.parse(serializedCache)); }
-          catch { await AsyncStorage.removeItem(cacheKey); }
+          try {
+            const snapshot = JSON.parse(serializedCache);
+            const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
+            if (Array.isArray(snapshot?.queries)) snapshot.queries = snapshot.queries.filter((query: any) => Number(query?.state?.dataUpdatedAt || 0) >= cutoff);
+            hydrate(queryClient, snapshot);
+          } catch { await AsyncStorage.removeItem(cacheKey); }
         }
       } catch {
         // Offline cache is best-effort; app startup must remain usable without it.
