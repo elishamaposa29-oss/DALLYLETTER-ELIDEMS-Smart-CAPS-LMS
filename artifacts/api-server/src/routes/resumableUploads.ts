@@ -3,12 +3,12 @@ import { appendFile, unlink, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { pool } from "@workspace/db";
 import { requireAuth } from "../lib/auth-middleware";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, persistUploadedMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, isObjectStorageConfigured, persistUploadedMedia } from "../lib/media-storage";
 import path from "node:path";
 
 const router = Router();
 const CHUNK_BYTES = 256 * 1024;
-const MAX_UPLOAD_BYTES = 250 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = isObjectStorageConfigured() ? 250 * 1024 * 1024 : 20 * 1024 * 1024;
 const SESSION_TTL_DAYS = 60;
 
 function validId(value: unknown): string | null {
@@ -35,9 +35,10 @@ router.post("/sessions", requireAuth, async (req, res): Promise<void> => {
 router.get("/sessions/:id", requireAuth, async (req, res): Promise<void> => {
   const id = validId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid upload session." }); return; }
-  const result = await pool.query("SELECT id,file_name,mime_type,total_bytes,chunk_bytes,expires_at FROM resumable_upload_sessions WHERE id=$1 AND user_id=$2 AND status='uploading' AND expires_at>now()", [id, req.currentUser!.id]);
+  const result = await pool.query("SELECT id,file_name,mime_type,total_bytes,chunk_bytes,expires_at,status,storage_key,media_url FROM resumable_upload_sessions WHERE id=$1 AND user_id=$2 AND expires_at>now()", [id, req.currentUser!.id]);
   const session = result.rows[0];
   if (!session) { res.status(404).json({ error: "Upload session not found or expired." }); return; }
+  if (session.status === "complete") { res.json({ sessionId:id,complete:true,storageKey:session.storage_key,mediaUrl:session.media_url,totalBytes:Number(session.total_bytes),fileName:session.file_name,mimeType:session.mime_type }); return; }
   const chunks = await pool.query("SELECT chunk_index,byte_offset,octet_length(data) AS size_bytes,sha256 FROM resumable_upload_chunks WHERE session_id=$1 ORDER BY chunk_index", [id]);
   const received = chunks.rows.map((row: any) => ({ index: Number(row.chunk_index), offset: Number(row.byte_offset), size: Number(row.size_bytes), sha256: row.sha256 }));
   let nextOffset = 0;
@@ -78,9 +79,10 @@ router.put("/sessions/:id/chunks/:index", requireAuth, async (req, res): Promise
 router.post("/sessions/:id/complete", requireAuth, async (req, res): Promise<void> => {
   const id = validId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid upload session." }); return; }
-  const result = await pool.query("SELECT * FROM resumable_upload_sessions WHERE id=$1 AND user_id=$2 AND status='uploading' AND expires_at>now()", [id, req.currentUser!.id]);
+  const result = await pool.query("SELECT * FROM resumable_upload_sessions WHERE id=$1 AND user_id=$2 AND expires_at>now()", [id, req.currentUser!.id]);
   const session = result.rows[0];
   if (!session) { res.status(404).json({ error: "Upload session not found or expired." }); return; }
+  if (session.status === "complete") { res.json({ storageKey:session.storage_key,mediaUrl:session.media_url,fileName:session.file_name,mimeType:session.mime_type,size:Number(session.total_bytes) }); return; }
   const chunks = await pool.query("SELECT chunk_index,byte_offset,data FROM resumable_upload_chunks WHERE session_id=$1 ORDER BY chunk_index", [id]);
   const totalBytes = Number(session.total_bytes), chunkBytes = Number(session.chunk_bytes);
   const expectedCount = Math.ceil(totalBytes / chunkBytes);
@@ -99,8 +101,10 @@ router.post("/sessions/:id/complete", requireAuth, async (req, res): Promise<voi
     await writeFile(tempPath, Buffer.alloc(0));
     for (const chunk of chunks.rows) await appendFile(tempPath, Buffer.from(chunk.data));
     await persistUploadedMedia(storageKey, session.mime_type, tempPath);
-    await pool.query("DELETE FROM resumable_upload_sessions WHERE id=$1 AND user_id=$2", [id, req.currentUser!.id]);
-    res.status(201).json({ storageKey, fileName: session.file_name, mimeType: session.mime_type, size: totalBytes, mediaUrl: "/api/lessons/media/" + storageKey + "?type=" + encodeURIComponent(session.mime_type) });
+    const mediaUrl = "/api/lessons/media/" + storageKey + "?type=" + encodeURIComponent(session.mime_type);
+    await pool.query("UPDATE resumable_upload_sessions SET status='complete',storage_key=$3,media_url=$4,completed_at=now() WHERE id=$1 AND user_id=$2", [id, req.currentUser!.id, storageKey, mediaUrl]);
+    await pool.query("DELETE FROM resumable_upload_chunks WHERE session_id=$1", [id]);
+    res.status(201).json({ storageKey, fileName: session.file_name, mimeType: session.mime_type, size: totalBytes, mediaUrl });
   } catch (error) {
     await unlink(tempPath).catch(() => undefined);
     res.status(503).json({ error: error instanceof Error ? error.message : "Could not finalize upload. Resume with the same session." });
