@@ -150,7 +150,7 @@ async function enqueueOfflinePost(r,u){
   const same=active.find(x=>x.scope===scope&&x.url===u.href&&x.body===body);
   if(same)return same;
   if(active.length>=OUTBOX_MAX_ITEMS||active.reduce((n,x)=>n+(x.bytes||0),0)+bytes>OUTBOX_MAX_BYTES)throw new Error("Offline submission storage is full. Reconnect and sync pending work first.");
-  const key=r.headers.get("Idempotency-Key")||crypto.randomUUID(),entry={id:key,idempotencyKey:key,scope,url:u.href,method:"POST",body,bytes,createdAt:now};
+  let bodyKey="";try{bodyKey=JSON.parse(body)?.idempotencyKey||"";}catch{}const key=r.headers.get("Idempotency-Key")||bodyKey||crypto.randomUUID(),entry={id:key,idempotencyKey:key,scope,url:u.href,method:"POST",body,bytes,createdAt:now};
   await offlinePut(OUTBOX_STORE,entry);
   await notifyClients({type:"DALLYLETTER_OFFLINE_SUBMISSION_QUEUED",id:entry.id});
   try{await self.registration.sync?.register("dallyletter-offline-outbox");}catch{}
