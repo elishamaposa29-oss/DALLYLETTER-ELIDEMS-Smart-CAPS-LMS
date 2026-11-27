@@ -1,6 +1,6 @@
 type DraftRecord<T = unknown> = { key: string; value: T; updatedAt: number };
 
-async function workerRequest<T>(message: Record<string, unknown>, token: string): Promise<T> {
+async function workerRequest<T>(message: Record<string, unknown>, token: string, userId: number): Promise<T> {
   if (!("serviceWorker" in navigator)) throw new Error("Offline draft storage requires a supported browser.");
   const registration = await navigator.serviceWorker.ready;
   const worker = navigator.serviceWorker.controller || registration.active;
@@ -15,7 +15,7 @@ async function workerRequest<T>(message: Record<string, unknown>, token: string)
       if (!result?.ok) reject(new Error(result?.error || "Offline storage failed."));
       else resolve(result as T);
     };
-    worker.postMessage({ ...message, authorization: "Bearer " + token }, [channel.port2]);
+    worker.postMessage({ ...message, authorization: "Bearer " + token, userId }, [channel.port2]);
   });
 }
 
