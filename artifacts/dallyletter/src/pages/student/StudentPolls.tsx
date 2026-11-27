@@ -98,7 +98,7 @@ export default function StudentPolls() {
     let restoredAnswers: Record<number, number> = {};
     if (user?.id) {
       try {
-        const drafts = await listOfflineDrafts<any>(token(), user.id);
+        const drafts = await listOfflineDrafts<any>(token() || "", user.id);
         const draft = drafts.find(item => item.key === "poll:" + poll.id)?.value;
         if (draft?.answers && typeof draft.answers === "object") restoredAnswers = draft.answers;
       } catch { /* Poll remains usable without optional local draft storage. */ }
@@ -115,7 +115,7 @@ export default function StudentPolls() {
   useEffect(() => {
     if (!activePoll || !user?.id || screen !== "quiz" || draftLoadedPollId !== activePoll.id) return;
     const timer = window.setTimeout(() => {
-      void saveOfflineDraft("poll:" + activePoll.id, { answers, resultPrivacy }, token(), user.id).catch(() => undefined);
+      void saveOfflineDraft("poll:" + activePoll.id, { answers, resultPrivacy }, token() || "", user.id).catch(() => undefined);
     }, 350);
     return () => window.clearTimeout(timer);
   }, [activePoll?.id, user?.id, screen, draftLoadedPollId, answers, resultPrivacy]);
@@ -151,7 +151,7 @@ export default function StudentPolls() {
       }
       if (r.status === 202 && data.queued) { toast({ title: "Saved offline", description: "Your poll answers are queued on this device. They are not submitted until the server confirms sync." }); return; }
       if (!r.ok) throw new Error((data as any)?.error || "Poll submission failed");
-      if (user?.id) deleteOfflineDraft("poll:" + activePoll.id, token(), user.id);
+      if (user?.id) deleteOfflineDraft("poll:" + activePoll.id, token() || "", user.id);
       setResults(data);
       setScreen("results");
     } catch (error) {
