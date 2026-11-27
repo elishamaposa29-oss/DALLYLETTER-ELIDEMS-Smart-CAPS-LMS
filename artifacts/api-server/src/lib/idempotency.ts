@@ -25,7 +25,7 @@ async function ensureSchema(): Promise<void> {
 /** Server-side replay protection for authenticated write requests. Keys are scoped to
  * the authenticated account and bound to a canonical request-body hash. */
 export async function idempotencyMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const rawKey = req.get("Idempotency-Key");
+  const rawKey = req.get("Idempotency-Key") || (typeof req.body?.idempotencyKey === "string" ? req.body.idempotencyKey : undefined);
   if (!rawKey) { next(); return; }
   const userId = Number(req.currentUser?.id);
   if (!Number.isSafeInteger(userId) || userId < 1) { res.status(401).json({ error: "Authentication required" }); return; }
