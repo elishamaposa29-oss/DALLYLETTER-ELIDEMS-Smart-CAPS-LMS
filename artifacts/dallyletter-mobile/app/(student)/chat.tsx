@@ -78,8 +78,10 @@ export default function StudentChat() {
   useEffect(() => { if (joinedGroups.length > 0 && !joinedGroups.some(group => group.id === selectedGroupId)) setSelectedGroupId(joinedGroups[0].id); }, [joinedGroups, selectedGroupId]);
 
   const persistQueue = async (next: any[]) => {
+    const serialized = JSON.stringify(next);
+    if (next.length > 100 || new TextEncoder().encode(serialized).byteLength > 2 * 1024 * 1024) throw new Error("Offline message storage is full. Reconnect and sync pending messages before adding more.");
+    if (queueKey) await AsyncStorage.setItem(queueKey, serialized);
     setQueuedMessages(next);
-    if (queueKey) await AsyncStorage.setItem(queueKey, JSON.stringify(next)).catch(() => {});
   };
 
   useEffect(() => {
