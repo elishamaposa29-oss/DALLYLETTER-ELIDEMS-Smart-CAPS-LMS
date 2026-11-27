@@ -13,6 +13,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { enqueueSubmission, listQueuedSubmissions, removeQueuedSubmission, updateQueuedSubmission, type QueuedSubmission } from "@/components/QueuedSubmissionStore";
+import { putOfflineLearningRecord } from "@/components/OfflineLearningStore";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -251,6 +252,7 @@ export default function FeatureHub() {
       const itemKey = section + ":" + String(selected.id);
       saved[itemKey] = { section, item: { ...selected }, detail: detail ? { ...detail } : null, savedAt: Date.now(), accountId: user.id, role };
       await AsyncStorage.setItem(key, JSON.stringify(saved));
+      await putOfflineLearningRecord(user.id, "lesson", itemKey, saved[itemKey]);
       Alert.alert("Saved for offline access", "This learning item and the details currently available are saved on this device. Submissions stay drafts until the server confirms them.");
     } catch {
       Alert.alert("Could not save", "Check available device storage and try again.");
