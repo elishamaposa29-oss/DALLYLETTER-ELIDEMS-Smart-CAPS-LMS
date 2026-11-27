@@ -48,12 +48,15 @@ test("a changed unsent payload replaces the target operation with a fresh idempo
 test("retry bookkeeping increments attempts and bounds error text", async () => {
   const storage = new MemoryStorage();
   await enqueueSubmission(storage, item(11, "answer"));
+  const stableKey = (await listQueuedSubmissions(storage, 11))[0].idempotencyKey;
   const rows = await updateQueuedSubmission(storage, 11, (await listQueuedSubmissions(storage, 11))[0].id, "offline");
   assert.equal(rows[0].attempts, 1);
   assert.equal(rows[0].lastError, "offline");
+  assert.equal(rows[0].idempotencyKey, stableKey);
   const again = await updateQueuedSubmission(storage, 11, (await listQueuedSubmissions(storage, 11))[0].id, "x".repeat(400));
   assert.equal(again[0].attempts, 2);
   assert.equal(again[0].lastError?.length, 300);
+  assert.equal(again[0].idempotencyKey, stableKey);
 });
 
 test("successful submission removal only changes the owning account queue", async () => {
