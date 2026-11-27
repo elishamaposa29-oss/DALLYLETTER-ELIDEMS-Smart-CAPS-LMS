@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
-const [media, cloud, lessons, assignments, exercises, messages, schema] = await Promise.all([
+const [media, cloud, lessons, assignments, exercises, messages, schema, cloudManager] = await Promise.all([
   read("../artifacts/api-server/src/lib/media-storage.ts"),
   read("../artifacts/api-server/src/routes/cloudStorage.ts"),
   read("../artifacts/api-server/src/routes/lessons.ts"),
@@ -10,6 +10,7 @@ const [media, cloud, lessons, assignments, exercises, messages, schema] = await 
   read("../artifacts/api-server/src/routes/exercises.ts"),
   read("../artifacts/api-server/src/routes/messages.ts"),
   read("../artifacts/api-server/src/lib/ensureCloudStorageSchema.ts"),
+  read("../artifacts/dallyletter-mobile/components/CloudStorageManager.tsx"),
 ]);
 
 assert.match(media, /persistUploadedMedia\([^)]*owner\?: CloudMediaOwner/);
@@ -27,6 +28,10 @@ assert.match(cloud, /WHERE id=\$1 AND user_id=\$2/);
 assert.match(cloud, /WHERE user_id=\$1/);
 assert.match(schema, /user_cloud_objects/);
 assert.match(schema, /used_bytes<=quota_bytes/);
+assert.equal((assignments.match(/category: "assignment"/g) || []).length, 2);
+assert.match(cloudManager, /listOfflineLearningRecords/);
+assert.match(cloudManager, /removeOfflineLearningRecord/);
+assert.match(cloudManager, /Remove offline copy/);
 
 // Account-scoped quota contract: one account reaching its cap must not consume
 // or expose another account's independent allowance.
