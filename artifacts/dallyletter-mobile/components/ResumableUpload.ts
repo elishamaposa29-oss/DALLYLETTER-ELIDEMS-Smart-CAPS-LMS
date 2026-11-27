@@ -7,6 +7,23 @@ type UploadProgress = { sentBytes: number; totalBytes: number; percent: number }
 const sessionKey = (userId: number, fileName: string, totalBytes: number, mimeType: string) =>
   "dallyletter_resumable_upload_v1_user_" + userId + "_" + encodeURIComponent([fileName,totalBytes,mimeType].join("|")).slice(0,160);
 
+async function pruneExpiredUploadSessions(userId:number,token:string):Promise<void> {
+  const prefix="dallyletter_resumable_upload_v1_user_"+userId+"_";
+  const keys=(await AsyncStorage.getAllKeys()).filter(key=>key.startsWith(prefix));
+  if(!keys.length)return;
+  const rows=await AsyncStorage.multiGet(keys);
+  for(const [key,raw] of rows) {
+    if(!raw)continue;
+    try {
+      const session=JSON.parse(raw) as UploadSession;
+      if(Date.now()-Number(session.updatedAt||0)<=7*24*60*60*1000)continue;
+      await requestJson("/api/uploads/sessions/"+session.sessionId,token,{method:"DELETE"}).catch(()=>undefined);
+      if(session.durableUri)await FileSystem.deleteAsync(session.durableUri,{idempotent:true}).catch(()=>undefined);
+      await AsyncStorage.removeItem(key);
+    } catch { await AsyncStorage.removeItem(key).catch(()=>undefined); }
+  }
+}
+
 async function requestJson(url: string, token: string, init: RequestInit = {}) {
   const response = await fetch(getApiUrl(url), { ...init, headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", ...(init.headers || {}) } });
   const body = await response.json().catch(() => ({}));
@@ -46,6 +63,7 @@ export async function uploadFileResumably(options: {
   const { userId, token, uri, fileName, mimeType, totalBytes, onProgress } = options;
   if (!Number.isSafeInteger(userId) || userId < 1 || !uri || !token || !fileName || !mimeType || !Number.isSafeInteger(totalBytes) || totalBytes < 1) throw new Error("Invalid resumable upload details.");
   const key = sessionKey(userId,fileName,totalBytes,mimeType);
+  await pruneExpiredUploadSessions(userId,token);
   let session: UploadSession | null = null;
   try { const raw=await AsyncStorage.getItem(key); session=raw?JSON.parse(raw) as UploadSession:null; } catch { session=null; }
   if (session && (session.fileName!==fileName || session.totalBytes!==totalBytes || session.mimeType!==mimeType)) {
