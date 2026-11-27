@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
-import { createHash } from "node:crypto";
 import { pool } from "@workspace/db";
+import { hashIdempotentRequest, isValidIdempotencyKey } from "./idempotency-core";
 
 let schemaReady: Promise<void> | null = null;
 async function ensureSchema(): Promise<void> {
@@ -30,10 +30,10 @@ export async function idempotencyMiddleware(req: Request, res: Response, next: N
   const userId = Number(req.currentUser?.id);
   if (!Number.isSafeInteger(userId) || userId < 1) { res.status(401).json({ error: "Authentication required" }); return; }
   const key = rawKey.trim();
-  if (!key || key.length > 200 || !/^[A-Za-z0-9._:-]+$/.test(key)) { res.status(400).json({ error: "Invalid Idempotency-Key" }); return; }
+  if (!isValidIdempotencyKey(key)) { res.status(400).json({ error: "Invalid Idempotency-Key" }); return; }
   try {
     await ensureSchema();
-    const requestHash = createHash("sha256").update(JSON.stringify(req.body ?? null)).digest("hex");
+    const requestHash = hashIdempotentRequest(req.method, req.originalUrl, req.body ?? null);
     const inserted = await pool.query(
       "INSERT INTO api_idempotency_records(user_id,idempotency_key,request_hash) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING idempotency_key",
       [userId, key, requestHash],
