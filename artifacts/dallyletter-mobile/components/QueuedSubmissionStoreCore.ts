@@ -36,9 +36,17 @@ export async function listQueuedSubmissions(storage: QueueStorage, userId: numbe
 
 export async function enqueueSubmission(storage: QueueStorage, item: Omit<QueuedSubmission, "id" | "idempotencyKey" | "createdAt" | "attempts"> & { idempotencyKey?: string }): Promise<QueuedSubmission[]> {
   const current = await listQueuedSubmissions(storage, item.userId);
-  // An identical retry is one operation; a changed payload is a separate attempt.
-  const duplicate = current.find((x) => x.kind === item.kind && x.targetId === item.targetId && x.path === item.path && x.body === item.body);
-  if (duplicate) return current;
+  // Keep exactly one pending operation per learning target. If the learner edits
+  // an unsent answer, replace its payload but retain the original replay key.
+  const duplicate = current.find((x) => x.kind === item.kind && x.targetId === item.targetId && x.path === item.path);
+  if (duplicate) {
+    if (duplicate.body === item.body) return current;
+    const replaced = current.map((row) => row.id === duplicate.id
+      ? { ...row, body: item.body, attempts: 0, lastError: undefined }
+      : row);
+    await storage.setItem(queueKey(item.userId), JSON.stringify(replaced));
+    return replaced;
+  }
   const idempotencyKey = item.idempotencyKey || createSubmissionIdempotencyKey();
   const id = idempotencyKey;
   const next: QueuedSubmission = { ...item, id, idempotencyKey, createdAt: new Date().toISOString(), attempts: 0 };
