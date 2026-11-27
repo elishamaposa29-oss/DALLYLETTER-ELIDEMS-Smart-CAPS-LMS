@@ -748,12 +748,13 @@ export default function FeatureHub() {
     if (!isStudent || !selected || !detail?.exercise || busy) return;
     setBusy(true);
     const idempotencyKey = createSubmissionIdempotencyKey();
+    const packedAnswers = (detail.questions || []).map((q: any) => {
+      const answer = answers[String(q.id)] || {};
+      return { questionId: q.id, ...answer, ...(answer.textAnswer ? {} : { textAnswer: "" }), ...(answer.drawData ? { drawData: { ...(answer.drawData as any), teacherDrawing: q.config?.teacherDrawing ?? null, learnerDrawing: answer.drawData } } : {}) };
+    });
+    const submissionBody = { newAttempt, answers: packedAnswers };
     try {
-      const packedAnswers = (detail.questions || []).map((q: any) => {
-        const answer = answers[String(q.id)] || {};
-        return { questionId: q.id, ...answer, ...(answer.textAnswer ? {} : { textAnswer: "" }), ...(answer.drawData ? { drawData: { ...(answer.drawData as any), teacherDrawing: q.config?.teacherDrawing ?? null, learnerDrawing: answer.drawData } } : {}) };
-      });
-      await request(`/api/exercises/${detail.exercise.id}/submit`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ newAttempt, answers: packedAnswers }) });
+      await request(`/api/exercises/${detail.exercise.id}/submit`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(submissionBody) });
       if (draftKey) await AsyncStorage.removeItem(draftKey).catch(() => undefined);
       setDraftKey(null);
       setNewAttempt(false);
@@ -764,8 +765,7 @@ export default function FeatureHub() {
       const message=e instanceof Error?e.message:"Please retry.";
       if (/network request failed|failed to fetch|network error|offline|timed? ?out|connection lost/i.test(message)) {
         try {
-          const packedAnswers = (detail.questions || []).map((q:any) => { const answer=answers[String(q.id)]||{}; return {questionId:q.id,...answer,...(answer.textAnswer?{}:{textAnswer:""}),...(answer.drawData?{drawData:{...(answer.drawData as any),teacherDrawing:q.config?.teacherDrawing??null,learnerDrawing:answer.drawData}}:{})}; });
-          await enqueueSubmission({userId:Number(user?.id),kind:"exercise",targetId:Number(detail.exercise.id),path:`/api/exercises/${detail.exercise.id}/submit`,body:JSON.stringify({newAttempt,answers:packedAnswers}),idempotencyKey});
+          await enqueueSubmission({userId:Number(user?.id),kind:"exercise",targetId:Number(detail.exercise.id),path:`/api/exercises/${detail.exercise.id}/submit`,body:JSON.stringify(submissionBody),idempotencyKey});
           await refreshQueuedSubmissions();
           Alert.alert("Saved for retry","You appear to be offline. Your exercise attempt is stored on this device and will retry when the app becomes active again. Your draft remains available.");
         } catch { Alert.alert("Submission failed",message); }
