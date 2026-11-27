@@ -5,6 +5,7 @@ import { pool } from "@workspace/db";
 import { requireAuth } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, isObjectStorageConfigured, persistUploadedMedia } from "../lib/media-storage";
 import path from "node:path";
+import { contiguousUploadOffset, uploadIsComplete, validateUploadChunk } from "../lib/resumable-upload-core";
 
 const router = Router();
 const CHUNK_BYTES = 256 * 1024;
@@ -41,11 +42,7 @@ router.get("/sessions/:id", requireAuth, async (req, res): Promise<void> => {
   if (session.status === "complete") { res.json({ sessionId:id,complete:true,storageKey:session.storage_key,mediaUrl:session.media_url,totalBytes:Number(session.total_bytes),fileName:session.file_name,mimeType:session.mime_type }); return; }
   const chunks = await pool.query("SELECT chunk_index,byte_offset,octet_length(data) AS size_bytes,sha256 FROM resumable_upload_chunks WHERE session_id=$1 ORDER BY chunk_index", [id]);
   const received = chunks.rows.map((row: any) => ({ index: Number(row.chunk_index), offset: Number(row.byte_offset), size: Number(row.size_bytes), sha256: row.sha256 }));
-  let nextOffset = 0;
-  for (const row of received) {
-    if (row.offset !== nextOffset) break;
-    nextOffset += row.size;
-  }
+  const nextOffset = contiguousUploadOffset(received);
   res.json({ sessionId: id, fileName: session.file_name, mimeType: session.mime_type, totalBytes: Number(session.total_bytes), chunkBytes: Number(session.chunk_bytes), received, nextOffset, expiresAt: session.expires_at });
 });
 
@@ -59,7 +56,7 @@ router.put("/sessions/:id/chunks/:index", requireAuth, async (req, res): Promise
   const offset = Number(req.body.offset);
   const expectedOffset = index * Number(session.chunk_bytes);
   const expectedSize = Math.min(Number(session.chunk_bytes), Number(session.total_bytes) - expectedOffset);
-  if (!data.length || data.length !== expectedSize || offset !== expectedOffset || expectedSize <= 0 || data.toString("base64") !== req.body.data) {
+  if (!data.length || !validateUploadChunk(Number(session.total_bytes), Number(session.chunk_bytes), index, offset, data.length) || data.length !== expectedSize || data.toString("base64") !== req.body.data) {
     res.status(400).json({ error: "Chunk size or byte offset is invalid." }); return;
   }
   const sha256 = createHash("sha256").update(data).digest("hex");
@@ -85,15 +82,9 @@ router.post("/sessions/:id/complete", requireAuth, async (req, res): Promise<voi
   if (session.status === "complete") { res.json({ storageKey:session.storage_key,mediaUrl:session.media_url,fileName:session.file_name,mimeType:session.mime_type,size:Number(session.total_bytes) }); return; }
   const chunks = await pool.query("SELECT chunk_index,byte_offset,data FROM resumable_upload_chunks WHERE session_id=$1 ORDER BY chunk_index", [id]);
   const totalBytes = Number(session.total_bytes), chunkBytes = Number(session.chunk_bytes);
-  const expectedCount = Math.ceil(totalBytes / chunkBytes);
-  if (chunks.rows.length !== expectedCount) { res.status(409).json({ error: "Upload is incomplete.", receivedChunks: chunks.rows.length, expectedChunks: expectedCount }); return; }
-  let offset = 0;
-  for (let i=0;i<chunks.rows.length;i++) {
-    const chunk = chunks.rows[i];
-    if (Number(chunk.chunk_index)!==i || Number(chunk.byte_offset)!==offset) { res.status(409).json({ error: "Upload has a missing or out-of-order chunk.", nextOffset: offset }); return; }
-    offset += Buffer.from(chunk.data).length;
-  }
-  if (offset !== totalBytes) { res.status(409).json({ error: "Upload size does not match the original file.", receivedBytes: offset, totalBytes }); return; }
+  const receivedChunks = chunks.rows.map((chunk: any) => ({ index:Number(chunk.chunk_index), offset:Number(chunk.byte_offset), size:Buffer.from(chunk.data).length }));
+  const offset = contiguousUploadOffset(receivedChunks);
+  if (!uploadIsComplete(totalBytes, chunkBytes, receivedChunks)) { res.status(409).json({ error: "Upload is incomplete or contains a missing/out-of-order chunk.", receivedBytes: offset, nextOffset: offset, totalBytes, expectedChunks: Math.ceil(totalBytes / chunkBytes), receivedChunks: chunks.rows.length }); return; }
   await ensureMediaDirectory();
   const storageKey = createMediaStorageKey();
   const tempPath = path.join(getMediaDirectory(), "resumable-" + storageKey + ".part");
