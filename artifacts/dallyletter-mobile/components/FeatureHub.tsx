@@ -842,8 +842,16 @@ export default function FeatureHub() {
   const sendPrivateMessage = async () => {
     if (!privateRecipient || !privateDraft.trim() || privateBusy) return;
     setPrivateBusy(true);
-    try { await request("/api/messages",{method:"POST",body:JSON.stringify({recipientId:Number(privateRecipient.id),content:privateDraft.trim(),type:"text"})}); setPrivateDraft(""); const messages=await request("/api/messages?recipientId="+encodeURIComponent(String(privateRecipient.id))); setPrivateMessages(Array.isArray(messages)?messages:[]); }
-    catch(e) { Alert.alert("Message not sent",e instanceof Error?e.message:"Reconnect and retry."); }
+    const idempotencyKey=createSubmissionIdempotencyKey();
+    const body=JSON.stringify({recipientId:Number(privateRecipient.id),content:privateDraft.trim(),type:"text",idempotencyKey});
+    try { await request("/api/messages",{method:"POST",headers:{"Idempotency-Key":idempotencyKey},body}); setPrivateDraft(""); const messages=await request("/api/messages?recipientId="+encodeURIComponent(String(privateRecipient.id))); setPrivateMessages(Array.isArray(messages)?messages:[]); }
+    catch(e) {
+      const message=e instanceof Error?e.message:"Reconnect and retry.";
+      if (/network request failed|failed to fetch|network error|offline|timed? ?out|connection lost/i.test(message) && user?.id) {
+        try { await enqueueSubmission({userId:Number(user.id),kind:"message",targetId:Number(privateRecipient.id),path:"/api/messages",body,idempotencyKey}); await refreshQueuedSubmissions(); setPrivateDraft(""); Alert.alert("Saved offline","Your private message is queued on this device and will send when the connection returns."); }
+        catch { Alert.alert("Message not saved","Device storage could not save this message. Keep the text and retry when online."); }
+      } else Alert.alert("Message not sent",message);
+    }
     finally { setPrivateBusy(false); }
   };
   const uploadPrivateMedia = async (documentOnly = false) => {
