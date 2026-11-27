@@ -26,8 +26,9 @@ import VoiceMessageComposer, { type VoiceRecordingFile } from "@/components/Voic
 import AuthenticatedAudioMessage from "@/components/AuthenticatedAudioMessage";
 import NativePushControls from "@/components/NativePushControls";
 import BreakElidemsShortcut from "@/components/BreakElidemsShortcut";
+import CloudStorageManager from "@/components/CloudStorageManager";
 
-type Section = "assignments" | "exercises" | "polls" | "notifications" | "groups" | "messages" | "payments" | "achievements" | "prefect" | "reports" | "audit";
+type Section = "cloud" | "assignments" | "exercises" | "polls" | "notifications" | "groups" | "messages" | "payments" | "achievements" | "prefect" | "reports" | "audit";
 type Row = Record<string, any> & { id: number; title?: string; name?: string };
 
 function stableValue(value: any): string {
@@ -58,6 +59,7 @@ function queuedExerciseAlreadyAccepted(current: any, item: QueuedSubmission): bo
 }
 
 const sections: { id: Section; title: string; subtitle: string; icon: string }[] = [
+  { id: "cloud", title: "Cloud storage", subtitle: "Your private 10 GB learning file space", icon: "cloud" },
   { id: "assignments", title: "Assignments", subtitle: "Due dates, submissions and feedback", icon: "clipboard" },
   { id: "exercises", title: "Exercises", subtitle: "Practice, submit answers and review results", icon: "edit-3" },
   { id: "polls", title: "Polls & quizzes", subtitle: "Timed quizzes, attempts and results", icon: "check-square" },
@@ -1275,6 +1277,7 @@ export default function FeatureHub() {
         ))}
       </ScrollView> : <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <TouchableOpacity onPress={() => { setSection(null); setSelected(null); setDetail(null); setError(""); }} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}><Feather name="arrow-left" size={18} color={colors.primary}/><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>All learning tools</Text></TouchableOpacity>
+        {section === "cloud" && <CloudStorageManager />}
         {section === "assignments" && (canCreateAssignments || (editingAssignmentId!==null&&canEditAssignments)) && <>
           <Text style={styles.sectionTitle}>{editingAssignmentId !== null ? "Edit assignment" : "Create assignment"}</Text>
           <TextInput style={styles.input} value={newTitle} onChangeText={setNewTitle} placeholder="Assignment title" placeholderTextColor={colors.mutedForeground}/>

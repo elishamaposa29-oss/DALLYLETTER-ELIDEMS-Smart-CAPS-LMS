@@ -1,0 +1,34 @@
+import { useCallback,useEffect,useState } from "react";
+import { ActivityIndicator,Alert,ScrollView,StyleSheet,Text,TouchableOpacity,View } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import { getApiUrl } from "@workspace/api-client-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useColors } from "@/hooks/useColors";
+
+type CloudItem={id:string;fileName:string;mimeType:string;sizeBytes:number;category:string;createdAt:string};
+type Usage={provider:string;configured:boolean;quotaBytes:number;usedBytes:number;availableBytes:number;usagePercent:number;maxObjectBytes:number};
+const pretty=(n:number)=>n>=1024**3?(n/1024**3).toFixed(2)+" GB":n>=1024**2?(n/1024**2).toFixed(1)+" MB":(n/1024).toFixed(0)+" KB";
+function categoryFor(mime:string){if(mime.startsWith("video/"))return "video";if(mime.startsWith("image/"))return "lesson";if(mime==="application/pdf"||mime.startsWith("text/"))return "document";return "other";}
+export default function CloudStorageManager(){
+ const {user,token}=useAuth(),colors=useColors();
+ const [usage,setUsage]=useState<Usage|null>(null),[items,setItems]=useState<CloudItem[]>([]),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState("");
+ const request=useCallback(async(path:string,init:RequestInit={})=>{if(!token)throw new Error("Sign in to use cloud storage.");const response=await fetch(getApiUrl(path),{...init,headers:{Authorization:"Bearer "+token,...(init.headers||{})}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Cloud storage request failed.");return data;},[token]);
+ const refresh=useCallback(async()=>{if(!user?.id||!token){setLoading(false);return;}setLoading(true);setError("");try{const [u,files]=await Promise.all([request("/api/cloud-storage/status"),request("/api/cloud-storage/objects?limit=100")]);setUsage(u);setItems(Array.isArray(files)?files:[]);}catch(e){setError(e instanceof Error?e.message:"Cloud storage unavailable.");}finally{setLoading(false);}},[request,user?.id,token]);
+ useEffect(()=>{void refresh();},[refresh]);
+ const upload=async()=>{if(busy)return;try{const picked=await DocumentPicker.getDocumentAsync({copyToCacheDirectory:true,multiple:false,type:"*/*"});if(picked.canceled||!picked.assets?.[0])return;const file=picked.assets[0];if(file.size&&file.size>250*1024*1024)throw new Error("Each file must be 250 MB or smaller.");setBusy(true);const form=new FormData();form.append("file",{uri:file.uri,name:file.name,type:file.mimeType||"application/octet-stream"} as any);form.append("category",categoryFor(file.mimeType||""));await request("/api/cloud-storage/objects",{method:"POST",body:form});await refresh();Alert.alert("Saved to cloud storage","Your file is now stored in your private Dallyletter cloud space.");}catch(e){Alert.alert("Upload failed",e instanceof Error?e.message:"Try again when connected.");}finally{setBusy(false);}};
+ const download=async(item:CloudItem)=>{if(!user?.id||!token)return;try{const dir=FileSystem.documentDirectory+"dallyletter-cloud-"+user.id+"/";await FileSystem.makeDirectoryAsync(dir,{intermediates:true}).catch(()=>undefined);const target=dir+item.id+"-"+item.fileName.replace(/[^a-z0-9._-]/gi,"_");const result=await FileSystem.downloadAsync(getApiUrl("/api/cloud-storage/objects/"+item.id+"/content"),target,{headers:{Authorization:"Bearer "+token}});if(result.status<200||result.status>=300)throw new Error("Download failed (HTTP "+result.status+").");Alert.alert("Available on this device","Saved "+item.fileName+" for offline use.");}catch(e){Alert.alert("Download failed",e instanceof Error?e.message:"Reconnect and retry.");}};
+ const remove=(item:CloudItem)=>Alert.alert("Delete cloud file?",item.fileName+" will be removed from your cloud storage.",[{text:"Cancel",style:"cancel"},{text:"Delete",style:"destructive",onPress:async()=>{try{await request("/api/cloud-storage/objects/"+item.id,{method:"DELETE"});await refresh();}catch(e){Alert.alert("Could not delete",e instanceof Error?e.message:"Retry.");}}}]);
+ const styles=StyleSheet.create({wrap:{gap:12,paddingBottom:24},panel:{backgroundColor:colors.card,borderColor:colors.border,borderWidth:1,borderRadius:14,padding:15,gap:8},title:{fontSize:16,fontWeight:"700",color:colors.foreground},muted:{fontSize:12,color:colors.mutedForeground},button:{backgroundColor:colors.primary,padding:13,borderRadius:10,alignItems:"center"},buttonText:{color:"#fff",fontWeight:"700"},item:{borderTopWidth:1,borderTopColor:colors.border,paddingTop:10,gap:5},row:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8},text:{color:colors.foreground,fontSize:13}});
+ return <View style={styles.wrap}>
+  <View style={styles.panel}><Text style={styles.title}>Private learning cloud</Text><Text style={styles.muted}>10 GB allowance per account · files stay in cloud until you remove them. Offline downloads use device storage separately.</Text>
+   {loading?<ActivityIndicator color={colors.primary}/>:usage?<><Text style={styles.text}>{pretty(usage.usedBytes)} used of {pretty(usage.quotaBytes)} ({usage.usagePercent}%)</Text><View style={{height:9,backgroundColor:colors.border,borderRadius:9,overflow:"hidden"}}><View style={{height:9,width:Math.min(100,usage.usagePercent)+"%",backgroundColor:colors.primary}}/></View><Text style={styles.muted}>{pretty(usage.availableBytes)} available · maximum file {pretty(usage.maxObjectBytes)}</Text></>:null}
+   {error?<Text style={{color:colors.error||"#dc2626",fontSize:12}}>{error}</Text>:null}
+   <TouchableOpacity style={styles.button} onPress={()=>void upload()} disabled={busy||loading}><Text style={styles.buttonText}>{busy?"Uploading…":"Upload file to cloud"}</Text></TouchableOpacity>
+   <TouchableOpacity onPress={()=>void refresh()}><Text style={{color:colors.primary,fontWeight:"600",textAlign:"center"}}>Refresh storage</Text></TouchableOpacity>
+  </View>
+  <View style={styles.panel}><Text style={styles.title}>Your files ({items.length})</Text>{items.length===0&&!loading?<Text style={styles.muted}>No cloud files yet. Upload a lesson, video, assignment or study resource to begin.</Text>:null}
+   {items.map(item=><View key={item.id} style={styles.item}><Text style={styles.text} numberOfLines={2}>{item.fileName}</Text><Text style={styles.muted}>{item.category.replace("_"," ")} · {pretty(item.sizeBytes)}</Text><View style={styles.row}><TouchableOpacity onPress={()=>void download(item)}><Text style={{color:colors.primary,fontWeight:"600"}}>Save offline</Text></TouchableOpacity><TouchableOpacity onPress={()=>remove(item)}><Text style={{color:"#dc2626",fontWeight:"600"}}>Delete</Text></TouchableOpacity></View></View>)}
+  </View>
+ </View>;
+}
