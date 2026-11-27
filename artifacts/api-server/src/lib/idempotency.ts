@@ -33,6 +33,7 @@ export async function idempotencyMiddleware(req: Request, res: Response, next: N
   if (!isValidIdempotencyKey(key)) { res.status(400).json({ error: "Invalid Idempotency-Key" }); return; }
   try {
     await ensureSchema();
+    await pool.query("DELETE FROM api_idempotency_records WHERE user_id=$1 AND idempotency_key=$2 AND expires_at<now()", [userId, key]);
     const requestHash = hashIdempotentRequest(req.method, req.originalUrl, req.body ?? null);
     const inserted = await pool.query(
       "INSERT INTO api_idempotency_records(user_id,idempotency_key,request_hash) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING idempotency_key",
