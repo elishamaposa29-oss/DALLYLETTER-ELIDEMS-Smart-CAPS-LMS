@@ -20,17 +20,17 @@ async function workerRequest<T>(message: Record<string, unknown>, token: string,
 }
 
 /** Persist a user draft in the account-scoped, 60-day offline store. */
-export async function saveOfflineDraft<T>(key: string, value: T, token: string): Promise<void> {
-  await workerRequest({ type: "DALLYLETTER_SAVE_OFFLINE_DRAFT", draft: { key, value } }, token);
+export async function saveOfflineDraft<T>(key: string, value: T, token: string, userId: number): Promise<void> {
+  await workerRequest({ type: "DALLYLETTER_SAVE_OFFLINE_DRAFT", draft: { key, value } }, token, userId);
 }
 
 /** Read only drafts belonging to the currently authenticated account. */
-export async function listOfflineDrafts<T = unknown>(token: string): Promise<DraftRecord<T>[]> {
-  const result = await workerRequest<{ drafts: DraftRecord<T>[] }>({ type: "DALLYLETTER_GET_OFFLINE_DRAFTS" }, token);
+export async function listOfflineDrafts<T = unknown>(token: string, userId: number): Promise<DraftRecord<T>[]> {
+  const result = await workerRequest<{ drafts: DraftRecord<T>[] }>({ type: "DALLYLETTER_GET_OFFLINE_DRAFTS" }, token, userId);
   return result.drafts;
 }
 
 /** Remove drafts for the authenticated account; queued submissions are never deleted here. */
-export function clearOfflineDrafts(token: string): void {
-  navigator.serviceWorker?.controller?.postMessage({ type: "DALLYLETTER_CLEAR_OFFLINE_DRAFTS", authorization: "Bearer " + token });
+export function clearOfflineDrafts(token: string, userId: number): void {
+  navigator.serviceWorker?.controller?.postMessage({ type: "DALLYLETTER_CLEAR_OFFLINE_DRAFTS", authorization: "Bearer " + token, userId });
 }
