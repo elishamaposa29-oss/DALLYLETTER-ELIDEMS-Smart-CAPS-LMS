@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { enqueueSubmission, listQueuedSubmissions, removeQueuedSubmission, updateQueuedSubmission, type QueueStorage } from "../../dallyletter-mobile/components/QueuedSubmissionStoreCore.js";
 import { listOfflineLearningRecords, putOfflineLearningRecord, pruneOfflineLearningRecords } from "../../dallyletter-mobile/components/OfflineLearningStoreCore.js";
 import { contiguousUploadOffset, uploadIsComplete, validateUploadChunk } from "../src/lib/resumable-upload-core.js";
+import { hashIdempotentRequest, isValidIdempotencyKey } from "../src/lib/idempotency-core.js";
 
 class MemoryStorage implements QueueStorage {
   values = new Map<string, string>();
@@ -129,4 +130,20 @@ test("resumable upload completes only when every chunk is contiguous and correct
     { index: 0, offset: 0, size: 256 },
     { index: 2, offset: 512, size: 88 },
   ]), false);
+});
+
+test("idempotency request fingerprints replay only the same method, route and payload", () => {
+  const body = { content: "same answer", fileUrl: null };
+  const first = hashIdempotentRequest("POST", "/api/assignments/42/submit", body);
+  assert.equal(hashIdempotentRequest("POST", "/api/assignments/42/submit", body), first);
+  assert.notEqual(hashIdempotentRequest("POST", "/api/assignments/43/submit", body), first);
+  assert.notEqual(hashIdempotentRequest("POST", "/api/assignments/42/submit", { ...body, content: "changed" }), first);
+  assert.notEqual(hashIdempotentRequest("PUT", "/api/assignments/42/submit", body), first);
+});
+
+test("idempotency keys reject empty, oversized and unsafe input", () => {
+  assert.equal(isValidIdempotencyKey("dl:stable-key_123"), true);
+  assert.equal(isValidIdempotencyKey(""), false);
+  assert.equal(isValidIdempotencyKey("x".repeat(201)), false);
+  assert.equal(isValidIdempotencyKey("bad key"), false);
 });
