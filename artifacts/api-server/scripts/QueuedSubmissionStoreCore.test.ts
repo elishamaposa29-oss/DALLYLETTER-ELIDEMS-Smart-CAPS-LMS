@@ -83,7 +83,9 @@ test("offline learning records are isolated by account and retained for at least
   await putOfflineLearningRecord(storage, 22, "draft", "draft-1", { text: "another learner" }, { now });
   assert.equal((await listOfflineLearningRecords(storage, 11, { now })).length, 1);
   assert.equal((await listOfflineLearningRecords(storage, 22, { now }))[0].value.text, "another learner");
-  assert.equal((await listOfflineLearningRecords(storage, 11, { now: now + 90 * 24 * 60 * 60 * 1000 + 1 })).length, 0);
+  const retained = await listOfflineLearningRecords(storage, 11, { now: now + 90 * 24 * 60 * 60 * 1000 + 1 });
+  assert.equal(retained.length, 1);
+  assert.deepEqual(retained[0].value, { text: "unfinished work" });
 });
 
 test("unsynced drafts and learner work survive beyond the 90-day lesson-cache window", async () => {
