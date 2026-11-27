@@ -64,6 +64,7 @@ router.post("/material", requireAuth, (req, res): void => {
     const file = req.file;
     if (!file) { res.status(400).json({ error: "A supported material file is required" }); return; }
     persistUploadedMedia(file.filename, file.mimetype, file.path, { userId: Number(req.currentUser!.id), category: "assignment", fileName: file.originalname }).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
+      if (isCloudQuotaExceeded(error)) { res.status(413).json({ code: "CLOUD_QUOTA_EXCEEDED", error: error instanceof Error ? error.message.split(":").slice(1).join(":").trim() : "Cloud storage quota exceeded" }); return; }
       logger.error({
         error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
         persistentStorageConfigured: isObjectStorageConfigured(),
@@ -85,6 +86,7 @@ router.post("/submission-material", requireAuth, (req, res): void => {
     const file = req.file;
     if (!file) { res.status(400).json({ error: "A supported submission file is required" }); return; }
     persistUploadedMedia(file.filename, file.mimetype, file.path, { userId: Number(req.currentUser!.id), category: "assignment", fileName: file.originalname }).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
+      if (isCloudQuotaExceeded(error)) { res.status(413).json({ code: "CLOUD_QUOTA_EXCEEDED", error: error instanceof Error ? error.message.split(":").slice(1).join(":").trim() : "Cloud storage quota exceeded" }); return; }
       logger.error({
         error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
         persistentStorageConfigured: isObjectStorageConfigured(),
