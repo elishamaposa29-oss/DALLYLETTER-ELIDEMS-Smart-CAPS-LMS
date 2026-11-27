@@ -197,10 +197,23 @@ export default function StudentChat() {
   }, [joinedGroups, selectedGroupId, selectedUserId]);
 
   const invalidateMessages = () => void queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === "DALLYLETTER_OFFLINE_SUBMISSION_QUEUED") toast({ title: "Message saved offline", description: "It will send when your connection returns." });
+      if (event.data?.type === "DALLYLETTER_OFFLINE_SUBMISSION_RESULT") {
+        if (event.data.ok) { toast({ title: "Queued message sent" }); invalidateMessages(); }
+        else toast({ variant: "destructive", title: "Queued message needs attention", description: "The server rejected the message. Please review and resend." });
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [selectedGroupId, selectedUserId]);
 
   const handleSendMessage = (event: React.FormEvent) => {
     event.preventDefault();
     if (!message.trim() || (!selectedGroupId && !selectedUserId)) return;
+    const idempotencyKey = crypto.randomUUID();
     sendMessageMutation.mutate({
       data: {
         content: message.trim(),
@@ -208,7 +221,8 @@ export default function StudentChat() {
         groupId: selectedGroupId,
         recipientId: selectedUserId,
         parentMessageId: selectedGroupId ? replyTo : null,
-      },
+        idempotencyKey,
+      } as any,
     }, {
       onSuccess: () => {
         setMessage("");
