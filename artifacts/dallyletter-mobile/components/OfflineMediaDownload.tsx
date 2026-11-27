@@ -29,9 +29,12 @@ async function pruneOfflineMedia(userId: number, incomingBytes = 0, preserveUrl?
     const bytes = info && "size" in info ? Number(info.size || record.bytes || 0) : Number(record.bytes || 0);
     entries.push({url,record,bytes,time});
   }
+  if (incomingBytes > MAX_OFFLINE_MEDIA_BYTES) throw new Error("This file is larger than the 512 MB offline media limit.");
   let count=entries.length, total=entries.reduce((n,x)=>n+x.bytes,0);
+  const preservedBytes=entries.find(x=>x.url===preserveUrl)?.bytes||0;
+  const additionalCount=preserveUrl && !saved[preserveUrl] ? 1 : 0;
   for (const entry of entries.filter(x=>x.url!==preserveUrl).sort((a,b)=>a.time-b.time)) {
-    if (count + (preserveUrl && !saved[preserveUrl] ? 1 : 0) <= MAX_OFFLINE_MEDIA_ITEMS && total + incomingBytes <= MAX_OFFLINE_MEDIA_BYTES) break;
+    if (count + additionalCount <= MAX_OFFLINE_MEDIA_ITEMS && total - preservedBytes + incomingBytes <= MAX_OFFLINE_MEDIA_BYTES) break;
     await FileSystem.deleteAsync(entry.record.localUri,{idempotent:true}).catch(()=>undefined);
     delete saved[entry.url]; count--; total-=entry.bytes;
   }
