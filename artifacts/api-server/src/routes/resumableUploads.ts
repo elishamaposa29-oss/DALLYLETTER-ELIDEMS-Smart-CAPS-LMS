@@ -3,8 +3,9 @@ import { appendFile, unlink, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { pool } from "@workspace/db";
 import { requireAuth } from "../lib/auth-middleware";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, isObjectStorageConfigured, persistUploadedMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, persistUploadedMedia } from "../lib/media-storage";
 import path from "node:path";
+import { isObjectStorageConfigured } from "../lib/object-storage";
 import { contiguousUploadOffset, uploadIsComplete, validateUploadChunk } from "../lib/resumable-upload-core";
 
 const router = Router();
