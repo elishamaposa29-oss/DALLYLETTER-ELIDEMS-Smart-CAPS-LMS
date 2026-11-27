@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { idempotencyMiddleware } from "../lib/idempotency";
 import multer from "multer";
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
@@ -327,7 +328,7 @@ router.post("/:id/ai-marking/:submissionId/run",requireAuth,requireManagerPermis
   }catch(err){res.status(502).json({error:err instanceof Error?err.message:"AI marking failed",provider:ai.name});}
 });
 
-router.post("/:id/submit",requireAuth,async(req,res):Promise<void>=>{
+router.post("/:id/submit",requireAuth,idempotencyMiddleware,async(req,res):Promise<void>=>{
   const user=req.currentUser!;if(user.role!==learnerRole){res.status(403).json({error:"Student access required"});return;}
   const exerciseId=parseId(req.params.id);if(!exerciseId){res.status(400).json({error:"Invalid exercise id"});return;}
   const [exercise]=await db.select().from(exercisesTable).where(eq(exercisesTable.id,exerciseId));if(!exercise||exercise.status!=="published"){res.status(404).json({error:"Exercise not found"});return;}
