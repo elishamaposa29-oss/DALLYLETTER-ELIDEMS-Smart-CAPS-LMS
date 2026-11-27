@@ -133,7 +133,8 @@ async function clearPrivateOfflineCache() {
 
 
 const OFFLINE_DB = "dallyletter-offline-v2", OUTBOX_STORE = "outbox", DRAFT_STORE = "drafts", ACCOUNT_STORE = "accounts";
-const OFFLINE_MAX_AGE_MS = 60*24*60*60*1000, OUTBOX_MAX_BYTES = 5*1024*1024, OUTBOX_MAX_ITEMS = 100, DRAFT_MAX_BYTES = 2*1024*1024;
+// Keep offline drafts and pending submissions for at least 90 days.
+const OFFLINE_MAX_AGE_MS = 90*24*60*60*1000, OUTBOX_MAX_BYTES = 5*1024*1024, OUTBOX_MAX_ITEMS = 100, DRAFT_MAX_BYTES = 2*1024*1024;
 function openOfflineDb(){return new Promise((resolve,reject)=>{const r=indexedDB.open(OFFLINE_DB,1);r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains(OUTBOX_STORE))d.createObjectStore(OUTBOX_STORE,{keyPath:"id"});if(!d.objectStoreNames.contains(DRAFT_STORE))d.createObjectStore(DRAFT_STORE,{keyPath:"id"});if(!d.objectStoreNames.contains(ACCOUNT_STORE))d.createObjectStore(ACCOUNT_STORE,{keyPath:"id"});};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
 async function offlineStoreAll(n){const d=await openOfflineDb();try{return await new Promise((resolve,reject)=>{const t=d.transaction(n,"readonly"),r=t.objectStore(n).getAll();r.onsuccess=()=>resolve(r.result||[]);r.onerror=()=>reject(r.error);});}finally{d.close();}}
 async function offlineGet(n,id){const d=await openOfflineDb();try{return await new Promise((resolve,reject)=>{const t=d.transaction(n,"readonly"),r=t.objectStore(n).get(id);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error);});}finally{d.close();}}
