@@ -32,7 +32,16 @@ test("re-enqueueing the identical operation is deduplicated without changing its
   assert.equal(rows[0].idempotencyKey, rows[0].id);
 });
 
-test("a changed payload is retained as a separate operation instead of overwriting queued work", async () => {\n  const storage = new MemoryStorage();\n  await enqueueSubmission(storage, item(11, "first answer"));\n  const rows = await enqueueSubmission(storage, item(11, "second answer"));\n  assert.equal(rows.length, 2);\n  assert.deepEqual(rows.map(row => row.body), ["first answer", "second answer"]);\n  assert.notEqual(rows[0].idempotencyKey, rows[1].idempotencyKey);\n});\n\ntest("retry bookkeeping increments attempts and bounds error text", async () => {
+test("a changed payload is retained as a separate operation instead of overwriting queued work", async () => {
+  const storage = new MemoryStorage();
+  await enqueueSubmission(storage, item(11, "first answer"));
+  const rows = await enqueueSubmission(storage, item(11, "second answer"));
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map(row => row.body), ["first answer", "second answer"]);
+  assert.notEqual(rows[0].idempotencyKey, rows[1].idempotencyKey);
+});
+
+test("retry bookkeeping increments attempts and bounds error text", async () => {
   const storage = new MemoryStorage();
   await enqueueSubmission(storage, item(11, "answer"));
   const rows = await updateQueuedSubmission(storage, 11, (await listQueuedSubmissions(storage, 11))[0].id, "offline");
