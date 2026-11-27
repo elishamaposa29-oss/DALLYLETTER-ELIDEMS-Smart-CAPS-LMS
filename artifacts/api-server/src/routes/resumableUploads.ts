@@ -83,29 +83,45 @@ router.put("/sessions/:id/chunks/:index", requireAuth, async (req, res): Promise
 router.post("/sessions/:id/complete", requireAuth, async (req, res): Promise<void> => {
   const id = validId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid upload session." }); return; }
-  const result = await pool.query("SELECT * FROM resumable_upload_sessions WHERE id=$1 AND user_id=$2 AND expires_at>now()", [id, req.currentUser!.id]);
-  const session = result.rows[0];
-  if (!session) { res.status(404).json({ error: "Upload session not found or expired." }); return; }
-  if (session.status === "complete") { res.json({ storageKey:session.storage_key,mediaUrl:session.media_url,fileName:session.file_name,mimeType:session.mime_type,size:Number(session.total_bytes) }); return; }
-  const chunks = await pool.query("SELECT chunk_index,byte_offset,data FROM resumable_upload_chunks WHERE session_id=$1 ORDER BY chunk_index", [id]);
-  const totalBytes = Number(session.total_bytes), chunkBytes = Number(session.chunk_bytes);
-  const receivedChunks = chunks.rows.map((chunk: any) => ({ index:Number(chunk.chunk_index), offset:Number(chunk.byte_offset), size:Buffer.from(chunk.data).length }));
-  const offset = contiguousUploadOffset(receivedChunks);
-  if (!uploadIsComplete(totalBytes, chunkBytes, receivedChunks)) { res.status(409).json({ error: "Upload is incomplete or contains a missing/out-of-order chunk.", receivedBytes: offset, nextOffset: offset, totalBytes, expectedChunks: Math.ceil(totalBytes / chunkBytes), receivedChunks: chunks.rows.length }); return; }
-  await ensureMediaDirectory();
-  const storageKey = createMediaStorageKey();
-  const tempPath = path.join(getMediaDirectory(), "resumable-" + storageKey + ".part");
+  const client = await pool.connect();
+  let tempPath: string | null = null;
   try {
+    await client.query("BEGIN");
+    const result = await client.query("SELECT * FROM resumable_upload_sessions WHERE id=$1 AND user_id=$2 AND expires_at>now() FOR UPDATE", [id, req.currentUser!.id]);
+    const session = result.rows[0];
+    if (!session) { await client.query("ROLLBACK"); res.status(404).json({ error: "Upload session not found or expired." }); return; }
+    if (session.status === "complete") {
+      await client.query("COMMIT");
+      res.json({ storageKey:session.storage_key,mediaUrl:session.media_url,fileName:session.file_name,mimeType:session.mime_type,size:Number(session.total_bytes) });
+      return;
+    }
+    const chunks = await client.query("SELECT chunk_index,byte_offset,data FROM resumable_upload_chunks WHERE session_id=$1 ORDER BY chunk_index", [id]);
+    const totalBytes = Number(session.total_bytes), chunkBytes = Number(session.chunk_bytes);
+    const receivedChunks = chunks.rows.map((chunk: any) => ({ index:Number(chunk.chunk_index), offset:Number(chunk.byte_offset), size:Buffer.from(chunk.data).length }));
+    const offset = contiguousUploadOffset(receivedChunks);
+    if (!uploadIsComplete(totalBytes, chunkBytes, receivedChunks)) {
+      await client.query("ROLLBACK");
+      res.status(409).json({ error: "Upload is incomplete or contains a missing/out-of-order chunk.", receivedBytes: offset, nextOffset: offset, totalBytes, expectedChunks: Math.ceil(totalBytes / chunkBytes), receivedChunks: chunks.rows.length });
+      return;
+    }
+    await ensureMediaDirectory();
+    const storageKey = createMediaStorageKey();
+    tempPath = path.join(getMediaDirectory(), "resumable-" + storageKey + ".part");
     await writeFile(tempPath, Buffer.alloc(0));
     for (const chunk of chunks.rows) await appendFile(tempPath, Buffer.from(chunk.data));
     await persistUploadedMedia(storageKey, session.mime_type, tempPath);
+    tempPath = null;
     const mediaUrl = "/api/lessons/media/" + storageKey + "?type=" + encodeURIComponent(session.mime_type);
-    await pool.query("UPDATE resumable_upload_sessions SET status='complete',storage_key=$3,media_url=$4,completed_at=now() WHERE id=$1 AND user_id=$2", [id, req.currentUser!.id, storageKey, mediaUrl]);
-    await pool.query("DELETE FROM resumable_upload_chunks WHERE session_id=$1", [id]);
+    await client.query("UPDATE resumable_upload_sessions SET status='complete',storage_key=$3,media_url=$4,completed_at=now() WHERE id=$1 AND user_id=$2", [id, req.currentUser!.id, storageKey, mediaUrl]);
+    await client.query("DELETE FROM resumable_upload_chunks WHERE session_id=$1", [id]);
+    await client.query("COMMIT");
     res.status(201).json({ storageKey, fileName: session.file_name, mimeType: session.mime_type, size: totalBytes, mediaUrl });
   } catch (error) {
-    await unlink(tempPath).catch(() => undefined);
+    await client.query("ROLLBACK").catch(() => undefined);
+    if (tempPath) await unlink(tempPath).catch(() => undefined);
     res.status(503).json({ error: error instanceof Error ? error.message : "Could not finalize upload. Resume with the same session." });
+  } finally {
+    client.release();
   }
 });
 
