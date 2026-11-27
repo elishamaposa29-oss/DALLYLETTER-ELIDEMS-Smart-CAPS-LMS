@@ -2,9 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import { getApiUrl } from "@workspace/api-client-react";
 
-type UploadSession = { sessionId: string; uri: string; fileName: string; totalBytes: number; mimeType: string; updatedAt: number };
+type UploadSession = { sessionId: string; uri: string; durableUri: string; fileName: string; totalBytes: number; mimeType: string; updatedAt: number };
 type UploadProgress = { sentBytes: number; totalBytes: number; percent: number };
-const sessionKey = (userId: number, uri: string) => "dallyletter_resumable_upload_v1_user_" + userId + "_" + encodeURIComponent(uri).slice(0,160);
+const sessionKey = (userId: number, fileName: string, totalBytes: number, mimeType: string) => "dallyletter_resumable_upload_v1_user_" + userId + "_" + encodeURIComponent([fileName,totalBytes,mimeType].join("|")).slice(0,160);
 
 async function requestJson(url: string, token: string, init: RequestInit = {}) {
   const response = await fetch(getApiUrl(url), { ...init, headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", ...(init.headers || {}) } });
@@ -26,7 +26,7 @@ export async function uploadFileResumably(options: {
 }): Promise<{ mediaUrl: string; storageKey: string; fileName: string; size: number }> {
   const { userId, token, uri, fileName, mimeType, totalBytes, onProgress } = options;
   if (!Number.isSafeInteger(userId) || userId < 1 || !uri || !token || !Number.isSafeInteger(totalBytes) || totalBytes < 1) throw new Error("Invalid resumable upload details.");
-  const key = sessionKey(userId, uri);
+  const key = sessionKey(userId, fileName, totalBytes, mimeType);
   let session: UploadSession | null = null;
   try { const raw = await AsyncStorage.getItem(key); session = raw ? JSON.parse(raw) as UploadSession : null; } catch { session = null; }
   if (!session || session.uri !== uri || session.totalBytes !== totalBytes || session.fileName !== fileName || session.mimeType !== mimeType) {
@@ -53,7 +53,7 @@ export async function uploadFileResumably(options: {
   for (let index = 0; index < chunks; index++) {
     if (received.has(index)) continue;
     const offset = index * chunkBytes, length = Math.min(chunkBytes, totalBytes - offset);
-    const data = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64, position: offset, length });
+    const data = await FileSystem.readAsStringAsync(session.durableUri, { encoding: FileSystem.EncodingType.Base64, position: offset, length });
     if (!data) throw new Error("Could not read upload chunk " + index + " from this device.");
     await requestJson("/api/uploads/sessions/" + session.sessionId + "/chunks/" + index, token, { method: "PUT", body: JSON.stringify({ offset, data }) });
     sentBytes += length;
@@ -66,7 +66,7 @@ export async function uploadFileResumably(options: {
 }
 
 export async function cancelResumableUpload(userId: number, uri: string, token: string): Promise<void> {
-  const key = sessionKey(userId, uri);
+  const rawKey = sessionKey(userId, "", 0, "");\n  const key = rawKey;
   const raw = await AsyncStorage.getItem(key);
   if (!raw) return;
   const session = JSON.parse(raw) as UploadSession;
