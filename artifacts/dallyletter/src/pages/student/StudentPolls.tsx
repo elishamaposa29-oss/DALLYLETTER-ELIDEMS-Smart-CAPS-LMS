@@ -120,6 +120,17 @@ export default function StudentPolls() {
     return () => window.clearTimeout(timer);
   }, [activePoll?.id, user?.id, screen, draftLoadedPollId, answers, resultPrivacy]);
 
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "DALLYLETTER_OFFLINE_SUBMISSION_RESULT") return;
+      if (event.data.ok) { toast({ title: "Poll answers synced successfully" }); setScreen("list"); }
+      else toast({ variant: "destructive", title: "Queued poll needs attention", description: "The server rejected the saved answers. Reopen the poll and review them." });
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [user?.id]);
+
   async function handleSubmit() {
     if (timerRef.current) clearInterval(timerRef.current);
     if (!activePoll) return;
