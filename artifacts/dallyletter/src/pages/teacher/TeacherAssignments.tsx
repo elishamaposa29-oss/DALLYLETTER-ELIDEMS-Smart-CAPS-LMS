@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { uploadFileResumably } from "@/lib/resumable-upload";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { ClipboardList, Plus, Calendar, BookOpen, Eye, Star, Trash2 } from "lucide-react";
 
@@ -64,15 +65,10 @@ export default function TeacherAssignments() {
 
   const uploadMaterial = (file: File | undefined) => {
     if (!file) return;
+    if (!user?.id || !file.type) { toast({ variant: "destructive", title: "Sign in and select a supported file." }); return; }
     setMaterialUploading(true);
-    const body = new FormData();
-    body.append("file", file);
-    void fetch(getApiUrl("/api/assignments/material"), { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body })
-      .then(async response => {
-        if (!response.ok) { const error = await response.json().catch(() => null) as { error?: string } | null; throw new Error(error?.error ?? "Material upload failed"); }
-        return response.json() as Promise<{ attachmentUrl: string }>;
-      })
-      .then(result => setForm(formState => ({ ...formState, attachmentUrl: result.attachmentUrl })))
+    void uploadFileResumably(file, token() || "", user.id)
+      .then(result => setForm(formState => ({ ...formState, attachmentUrl: result.mediaUrl })))
       .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Material upload failed" }))
       .finally(() => setMaterialUploading(false));
   };
