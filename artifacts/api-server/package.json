@@ -28,7 +28,8 @@
     "express": "^5",
     "multer": "^2.0.2",
     "pino": "^9",
-    "pino-http": "^10"
+    "pino-http": "^10",
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
