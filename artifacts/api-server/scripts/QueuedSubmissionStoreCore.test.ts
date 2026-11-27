@@ -204,5 +204,5 @@ test("per-user cloud storage allowance is 10 GiB and resource categories cover l
     assert.equal(isCloudStorageCategory(category), true);
   }
   assert.equal(isCloudStorageCategory("another-user-private"), false);
-  assert.equal(safeCloudFileName("../../private\\0answer.pdf"), ".._.._private_answer.pdf");
+  assert.equal(safeCloudFileName("../../private\0answer.pdf"), ".._.._private_answer.pdf");
 });
