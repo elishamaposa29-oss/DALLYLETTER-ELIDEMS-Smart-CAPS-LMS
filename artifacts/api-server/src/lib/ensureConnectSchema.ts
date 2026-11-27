@@ -60,6 +60,9 @@ export async function ensureConnectSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY(session_id,chunk_index)
     )`);
+    await client.query("ALTER TABLE resumable_upload_sessions ADD COLUMN IF NOT EXISTS storage_key text");
+    await client.query("ALTER TABLE resumable_upload_sessions ADD COLUMN IF NOT EXISTS media_url text");
+    await client.query("ALTER TABLE resumable_upload_sessions ADD COLUMN IF NOT EXISTS completed_at timestamptz");
     await client.query("CREATE INDEX IF NOT EXISTS resumable_upload_expiry_idx ON resumable_upload_sessions(expires_at)");
     await client.query("DELETE FROM resumable_upload_sessions WHERE expires_at < now()");
 
