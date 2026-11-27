@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import { getApiUrl } from "@workspace/api-client-react";
 
-type UploadSession = { sessionId: string; durableUri: string; fileName: string; totalBytes: number; mimeType: string; updatedAt: number };
+type UploadSession = { sessionId: string; durableUri: string; fileName: string; totalBytes: number; mimeType: string; fingerprint: string; updatedAt: number };
 type UploadProgress = { sentBytes: number; totalBytes: number; percent: number };
 const sessionKey = (userId: number, fileName: string, totalBytes: number, mimeType: string) =>
   "dallyletter_resumable_upload_v1_user_" + userId + "_" + encodeURIComponent([fileName,totalBytes,mimeType].join("|")).slice(0,160);
@@ -12,6 +12,13 @@ async function requestJson(url: string, token: string, init: RequestInit = {}) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error((body.error || "Upload request failed") + " (HTTP " + response.status + ").");
   return body;
+}
+
+async function sourceFingerprint(uri: string, totalBytes: number): Promise<string> {
+  const length = Math.min(64 * 1024, totalBytes);
+  const first = await FileSystem.readAsStringAsync(uri,{encoding:FileSystem.EncodingType.Base64,position:0,length});
+  const last = await FileSystem.readAsStringAsync(uri,{encoding:FileSystem.EncodingType.Base64,position:Math.max(0,totalBytes-length),length});
+  return first + ":" + last;
 }
 
 async function persistSourceFile(uri: string, fileName: string, expectedBytes: number): Promise<string> {
@@ -43,14 +50,28 @@ export async function uploadFileResumably(options: {
   try { const raw=await AsyncStorage.getItem(key); session=raw?JSON.parse(raw) as UploadSession:null; } catch { session=null; }
   if (session && (session.fileName!==fileName || session.totalBytes!==totalBytes || session.mimeType!==mimeType)) {
     await requestJson("/api/uploads/sessions/"+session.sessionId,token,{method:"DELETE"}).catch(()=>undefined);
-    await FileSystem.deleteAsync(session.durableUri,{idempotent:true}).catch(()=>undefined);
+    if(session.durableUri) await FileSystem.deleteAsync(session.durableUri,{idempotent:true}).catch(()=>undefined);
     session=null;
+  }
+  if (session && session.durableUri) {
+    try {
+      const incomingFingerprint=await sourceFingerprint(uri,totalBytes);
+      const storedFingerprint=session.fingerprint || await sourceFingerprint(session.durableUri,totalBytes);
+      if(incomingFingerprint!==storedFingerprint) {
+        await requestJson("/api/uploads/sessions/"+session.sessionId,token,{method:"DELETE"}).catch(()=>undefined);
+        await FileSystem.deleteAsync(session.durableUri,{idempotent:true}).catch(()=>undefined);
+        session=null;
+      } else if(!session.fingerprint) {
+        session={...session,fingerprint:storedFingerprint};
+        await AsyncStorage.setItem(key,JSON.stringify(session));
+      }
+    } catch { /* A picker URI may no longer be readable; the persisted copy remains authoritative. */ }
   }
   if (!session) {
     const durableUri=await persistSourceFile(uri,fileName,totalBytes);
     try {
       const created=await requestJson("/api/uploads/sessions",token,{method:"POST",body:JSON.stringify({fileName,mimeType,totalBytes})});
-      session={sessionId:created.sessionId,durableUri,fileName,totalBytes,mimeType,updatedAt:Date.now()};
+      session={sessionId:created.sessionId,durableUri,fileName,totalBytes,mimeType,fingerprint:await sourceFingerprint(durableUri,totalBytes),updatedAt:Date.now()};
       await AsyncStorage.setItem(key,JSON.stringify(session));
     } catch(error) {
       await FileSystem.deleteAsync(durableUri,{idempotent:true}).catch(()=>undefined);
@@ -60,7 +81,7 @@ export async function uploadFileResumably(options: {
     const info=await FileSystem.getInfoAsync(session.durableUri).catch(()=>null);
     if (!info?.exists) {
       const durableUri=await persistSourceFile(uri,fileName,totalBytes);
-      session={...session,durableUri,updatedAt:Date.now()};
+      session={...session,durableUri,fingerprint:await sourceFingerprint(durableUri,totalBytes),updatedAt:Date.now()};
       await AsyncStorage.setItem(key,JSON.stringify(session));
     }
   }
