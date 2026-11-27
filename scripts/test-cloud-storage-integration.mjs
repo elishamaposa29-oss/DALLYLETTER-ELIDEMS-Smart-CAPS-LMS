@@ -21,7 +21,8 @@ assert.match(lessons, /category: Number\(req\.query\.groupId\) > 0 \? "study_gro
 assert.match(assignments, /category: "assignment"/);
 assert.match(exercises, /category: "exercise"/);
 assert.match(messages, /category: groupId != null \? "study_group" : "message"/);
-assert.match(cloud, /router\.post\("\/reconcile",requireAuth/);\nassert.match(cloud, /configured:isObjectStorageConfigured\(\)/);
+assert.match(cloud, /router\.post\("\/reconcile",requireAuth/);
+assert.match(cloud, /configured:isObjectStorageConfigured\(\)/);
 assert.match(cloud, /WHERE id=\$1 AND user_id=\$2/);
 assert.match(cloud, /WHERE user_id=\$1/);
 assert.match(schema, /user_cloud_objects/);
