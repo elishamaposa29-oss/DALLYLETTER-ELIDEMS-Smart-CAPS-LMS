@@ -8,6 +8,7 @@ import { getListNotificationsQueryKey, useListNotifications, useMarkNotification
 import { useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
@@ -15,6 +16,7 @@ import { ActivityIndicator, Alert, AppState, Modal, Platform, ScrollView, StyleS
 import { enqueueSubmission, listQueuedSubmissions, removeQueuedSubmission, updateQueuedSubmission, type QueuedSubmission } from "@/components/QueuedSubmissionStore";
 import { createSubmissionIdempotencyKey } from "@/components/QueuedSubmissionStoreCore";
 import { listOfflineLearningRecords, putOfflineLearningRecord, removeOfflineLearningRecord } from "@/components/OfflineLearningStore";
+import { uploadFileResumably } from "@/components/ResumableUpload";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -602,11 +604,14 @@ export default function FeatureHub() {
     }
     setUploading(true);
     try {
-      const form = new FormData();
-      form.append("file", { uri: asset.uri, name: asset.fileName || "lesson-media", type: asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg") } as any);
-      const result = await request("/api/assignments/material", { method: "POST", body: form });
-      if (!result.attachmentUrl) throw new Error("Upload completed without an attachment link");
-      setAttachmentUrl(result.attachmentUrl);
+      const fileName = asset.fileName || "lesson-media";
+      const mimeType = asset.mimeType || (asset.type === "document" ? (fileName.toLowerCase().endsWith(".pdf") ? "application/pdf" : fileName.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg");
+      const info = await FileSystem.getInfoAsync(asset.uri);
+      const totalBytes = Number((asset as any).fileSize || (info as any).size || 0);
+      if (!user?.id || !totalBytes) throw new Error("Could not verify the selected file size or account.");
+      const result = await uploadFileResumably({ userId:Number(user.id), token:token || "", uri:asset.uri, fileName, mimeType, totalBytes });
+      if (!result.mediaUrl) throw new Error("Upload completed without an attachment link");
+      setAttachmentUrl(result.mediaUrl);
       Alert.alert("Uploaded", "Media is ready to attach to your assignment.");
     } catch (e) { Alert.alert("Upload failed", e instanceof Error ? e.message : "Please retry."); }
     finally { setUploading(false); }
