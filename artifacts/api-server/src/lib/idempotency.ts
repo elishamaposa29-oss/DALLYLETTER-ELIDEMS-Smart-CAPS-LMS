@@ -67,7 +67,7 @@ export async function idempotencyMiddleware(req: Request, res: Response, next: N
           "UPDATE api_idempotency_records SET state='complete',response_status=$3,response_body=$4::jsonb WHERE user_id=$1 AND idempotency_key=$2",
           [userId, key, status, JSON.stringify(body ?? null)],
         ).then(() => sendJson(body)).catch(() => {
-          if (!res.headersSent) sendJson({ error: "The operation was processed but its acknowledgement could not be stored. Retry with the same key." });
+          if (!res.headersSent) { res.statusCode = 503; sendJson({ error: "The operation was processed but its acknowledgement could not be stored. Retry with the same key." }); }
         });
       } else {
         void pool.query("DELETE FROM api_idempotency_records WHERE user_id=$1 AND idempotency_key=$2", [userId, key])
