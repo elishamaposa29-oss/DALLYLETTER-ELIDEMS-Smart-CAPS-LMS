@@ -49,6 +49,7 @@ export default function StudentChat() {
   const queueKey = user?.id ? "dallyletter_mobile_chat_outbox_user_" + user.id : null;
   useEffect(() => {
     if (!user?.id || selectedGroupId == null) return;
+    setText("");
     let active = true;
     void listOfflineLearningRecords(user.id).then(rows => {
       const draft = rows.find(row => row.kind === "draft" && row.id === "chat:" + selectedGroupId);
