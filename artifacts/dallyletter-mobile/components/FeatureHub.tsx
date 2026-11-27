@@ -14,7 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { enqueueSubmission, listQueuedSubmissions, removeQueuedSubmission, updateQueuedSubmission, type QueuedSubmission } from "@/components/QueuedSubmissionStore";
 import { createSubmissionIdempotencyKey } from "@/components/QueuedSubmissionStoreCore";
-import { putOfflineLearningRecord } from "@/components/OfflineLearningStore";
+import { listOfflineLearningRecords, putOfflineLearningRecord, removeOfflineLearningRecord } from "@/components/OfflineLearningStore";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -139,6 +139,21 @@ export default function FeatureHub() {
   const [privateRecipient, setPrivateRecipient] = useState<Row | null>(null);
   const [privateMessages, setPrivateMessages] = useState<Row[]>([]);
   const [privateDraft, setPrivateDraft] = useState("");
+  useEffect(() => {
+    if (!user?.id || !privateRecipient?.id) return;
+    let active = true;
+    setPrivateDraft("");
+    void listOfflineLearningRecords(user.id).then(records => {
+      const draft = records.find(row => row.kind === "draft" && row.id === "private-message:" + privateRecipient.id);
+      if (active && typeof (draft?.value as any)?.content === "string") setPrivateDraft((draft!.value as any).content);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [user?.id, privateRecipient?.id]);
+  useEffect(() => {
+    if (!user?.id || !privateRecipient?.id || !privateDraft.trim()) return;
+    const timer = setTimeout(() => { void putOfflineLearningRecord(user.id, "draft", "private-message:" + privateRecipient.id, { content: privateDraft }).catch(() => undefined); }, 350);
+    return () => clearTimeout(timer);
+  }, [user?.id, privateRecipient?.id, privateDraft]);
   const [privateBusy, setPrivateBusy] = useState(false);
   const [privateMediaBusy, setPrivateMediaBusy] = useState(false);
   const [groupSettings, setGroupSettings] = useState<any>(null);
@@ -844,11 +859,11 @@ export default function FeatureHub() {
     setPrivateBusy(true);
     const idempotencyKey=createSubmissionIdempotencyKey();
     const body=JSON.stringify({recipientId:Number(privateRecipient.id),content:privateDraft.trim(),type:"text",idempotencyKey});
-    try { await request("/api/messages",{method:"POST",headers:{"Idempotency-Key":idempotencyKey},body}); setPrivateDraft(""); const messages=await request("/api/messages?recipientId="+encodeURIComponent(String(privateRecipient.id))); setPrivateMessages(Array.isArray(messages)?messages:[]); }
+    try { await request("/api/messages",{method:"POST",headers:{"Idempotency-Key":idempotencyKey},body}); await removeOfflineLearningRecord(Number(user?.id),"draft","private-message:"+privateRecipient.id); setPrivateDraft(""); const messages=await request("/api/messages?recipientId="+encodeURIComponent(String(privateRecipient.id))); setPrivateMessages(Array.isArray(messages)?messages:[]); }
     catch(e) {
       const message=e instanceof Error?e.message:"Reconnect and retry.";
       if (/network request failed|failed to fetch|network error|offline|timed? ?out|connection lost/i.test(message) && user?.id) {
-        try { await enqueueSubmission({userId:Number(user.id),kind:"message",targetId:Number(privateRecipient.id),path:"/api/messages",body,idempotencyKey}); await refreshQueuedSubmissions(); setPrivateDraft(""); Alert.alert("Saved offline","Your private message is queued on this device and will send when the connection returns."); }
+        try { await enqueueSubmission({userId:Number(user.id),kind:"message",targetId:Number(privateRecipient.id),path:"/api/messages",body,idempotencyKey}); await refreshQueuedSubmissions(); await removeOfflineLearningRecord(Number(user.id),"draft","private-message:"+privateRecipient.id); setPrivateDraft(""); Alert.alert("Saved offline","Your private message is queued on this device and will send when the connection returns."); }
         catch { Alert.alert("Message not saved","Device storage could not save this message. Keep the text and retry when online."); }
       } else Alert.alert("Message not sent",message);
     }
