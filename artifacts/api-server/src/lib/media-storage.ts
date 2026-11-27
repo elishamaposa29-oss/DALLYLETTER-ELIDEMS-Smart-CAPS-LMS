@@ -189,8 +189,14 @@ export async function removeStoredMedia(storageKey: string): Promise<void> {
   const cloudKey = "media/" + storageKey;
   const registered = await pool.query("SELECT id,user_id,size_bytes,storage_key FROM user_cloud_objects WHERE storage_key=$1 LIMIT 1", [cloudKey]);
   if (registered.rows[0]) {
-    if (isObjectStorageConfigured()) await deleteCloudObject(String(registered.rows[0].storage_key));
-    await pool.query("DELETE FROM media_object_chunks WHERE storage_key=$1", [storageKey]);
+    const databaseCopy = await pool.query("SELECT 1 FROM media_object_chunks WHERE storage_key=$1 LIMIT 1", [storageKey]);
+    if (databaseCopy.rows.length) {
+      await pool.query("DELETE FROM media_object_chunks WHERE storage_key=$1", [storageKey]);
+    } else if (isObjectStorageConfigured()) {
+      await deleteCloudObject(String(registered.rows[0].storage_key));
+    } else {
+      throw new Error("Cloud provider is unavailable; the registered object and quota were preserved for retry.");
+    }
     await deleteStoredMedia(storageKey);
     const client = await pool.connect();
     try {
