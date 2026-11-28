@@ -78,9 +78,9 @@ test("object metadata HEAD is signed and treats missing objects as absent", asyn
   const methods: string[] = [];
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     methods.push(String(init?.method));
-    return methods.length === 1
-      ? new Response(null, { status: 200, headers: { "content-length": "1234", "content-type": "video/mp4" } })
-      : new Response(null, { status: 404 });
+    return (methods.length === 1
+      ? { status: 200, ok: true, headers: new Headers({ "content-length": "1234", "content-type": "video/mp4" }) }
+      : { status: 404, ok: false, headers: new Headers() }) as Response;
   }) as typeof fetch;
   try {
     const found = await headObject("00000000-0000-4000-8000-000000000000");
