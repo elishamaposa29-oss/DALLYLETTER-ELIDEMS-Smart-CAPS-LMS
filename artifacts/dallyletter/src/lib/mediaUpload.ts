@@ -127,7 +127,7 @@ export async function uploadRouteMedia<T extends Record<string, unknown>>(
     const queryAt = endpoint.indexOf("?");
     const base = queryAt < 0 ? endpoint : endpoint.slice(0, queryAt);
     const query = queryAt < 0 ? "" : endpoint.slice(queryAt);
-    return base.replace(/\\/$/, "") + suffix + query;
+    return (base.endsWith("/") ? base.slice(0, -1) : base) + suffix + query;
   };
   const ticketUrl = routeUrl("/direct-upload-ticket");
   const completeUrl = routeUrl("/direct-upload-complete");
