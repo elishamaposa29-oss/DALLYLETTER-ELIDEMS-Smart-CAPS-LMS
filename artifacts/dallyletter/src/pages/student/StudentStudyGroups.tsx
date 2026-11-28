@@ -2,6 +2,7 @@ import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-gra
 import { DashboardLayout } from "@/components/DashboardLayout";
 import UserProfileLink from "@/components/UserProfileLink";
 import { apiJson } from "@/lib/api";
+import { uploadLessonMedia } from "@/lib/mediaUpload";
 import {
   useListStudyGroups,
   useJoinStudyGroup,
@@ -154,12 +155,8 @@ export default function StudentStudyGroups() {
             if (!Number.isInteger(createdId) || createdId <= 0) throw new Error("The group was created but its ID was not returned.");
             let coverImageUrl: string | undefined;
             if (coverFile) {
-              const formData = new FormData();
-              formData.append("file", coverFile);
               const token = localStorage.getItem("dallyletter_token");
-              const upload = await fetch(getApiUrl(`/api/lessons/media?groupId=${createdId}`), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
-              const uploaded = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
-              if (!upload.ok || !uploaded?.mediaUrl) throw new Error(uploaded?.error ?? "Group cover upload failed.");
+              const uploaded = await uploadLessonMedia(coverFile, token, { groupId: createdId });
               coverImageUrl = uploaded.mediaUrl;
             }
             const profile = await apiJson(`/api/study-groups/${createdId}/profile`, { method: "PATCH", body: JSON.stringify({ grade, topic, ...(coverImageUrl ? { coverImageUrl } : {}) }) });
@@ -221,11 +218,8 @@ export default function StudentStudyGroups() {
       if (canEditProfile) {
         let coverImageUrl: string | undefined;
         if (profileCoverFile) {
-          const formData = new FormData(); formData.append("file", profileCoverFile);
           const token = localStorage.getItem("dallyletter_token");
-          const upload = await fetch(getApiUrl(`/api/lessons/media?groupId=${settings.groupId}`), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
-          const uploaded = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
-          if (!upload.ok || !uploaded?.mediaUrl) throw new Error(uploaded?.error ?? "Group cover upload failed.");
+          const uploaded = await uploadLessonMedia(profileCoverFile, token, { groupId: settings.groupId });
           coverImageUrl = uploaded.mediaUrl;
         }
         await apiJson(`/api/study-groups/${settings.groupId}/profile`, { method: "PATCH", body: JSON.stringify({ grade: profileGrade, topic: profileTopic, ...(coverImageUrl ? { coverImageUrl } : {}) }) });
@@ -261,16 +255,8 @@ export default function StudentStudyGroups() {
     }
     setUploadingCoverGroupId(groupId);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
       const token = localStorage.getItem("dallyletter_token");
-      const response = await fetch(getApiUrl(`/api/lessons/media?groupId=${groupId}`), {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      });
-      const uploaded = await response.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
-      if (!response.ok || !uploaded?.mediaUrl) throw new Error(uploaded?.error ?? `Image upload failed (${response.status}).`);
+      const uploaded = await uploadLessonMedia(file, token, { groupId });
       await apiJson(`/api/study-groups/${groupId}/profile`, {
         method: "PATCH",
         body: JSON.stringify({ coverImageUrl: uploaded.mediaUrl }),
