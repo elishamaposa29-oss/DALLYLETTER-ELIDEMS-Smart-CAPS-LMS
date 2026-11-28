@@ -247,9 +247,7 @@ export default function MobileProfileHub() {
     const asset=picked.assets[0];
     if(asset.size&&asset.size>10*1024*1024){Alert.alert("File too large","Choose a PDF/JPG/PNG up to 10 MB.");return;}
     await act(async()=>{
-      const form=new FormData();
-      form.append("file",{uri:asset.uri,name:asset.name||"qualification-document.pdf",type:asset.mimeType||"application/pdf"} as any);
-      const result=await api("/api/qualifications/"+id+"/document",{method:"POST",body:form});
+      const result=await uploadRouteMedia(asset.uri,asset.name||"qualification-document.pdf",asset.mimeType||"application/pdf",token,"/api/qualifications/"+id+"/document",{fileName:asset.name||"qualification-document.pdf"});
       setMessage(result.message||"Document uploaded for verification.");await load();
     });
   };
