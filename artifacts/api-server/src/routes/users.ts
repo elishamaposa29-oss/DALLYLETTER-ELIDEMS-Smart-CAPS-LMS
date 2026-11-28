@@ -571,6 +571,7 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
       const actor = req.currentUser!;
       const localPath = path.join(os.tmpdir(), `dallyletter-teacher-document-${crypto.randomUUID()}`);
       const storageKey = createMediaStorageKey();
+      let mediaPersisted = false;
       try {
         await writeFile(localPath, req.file.buffer);
         await persistTicketedMediaUpload({
@@ -581,11 +582,15 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
             maxBytes: 10 * 1024 * 1024,
           },
         });
+        mediaPersisted = true;
         const result = await pool.query(
           "INSERT INTO teacher_documents (user_id, document_type, file_name, mime_type, size_bytes, data, storage_key) VALUES ($1,$2,$3,$4,$5,decode('', 'hex'),$6) RETURNING id, document_type, file_name, mime_type, size_bytes, created_at",
           [actor.id, documentType, req.file.originalname, req.file.mimetype, req.file.size, storageKey],
         );
         res.status(201).json(result.rows[0]);
+      } catch (error) {
+        if (mediaPersisted) await removeStoredMedia(storageKey).catch(() => undefined);
+        throw error;
       } finally {
         await unlink(localPath).catch(() => undefined);
       }
