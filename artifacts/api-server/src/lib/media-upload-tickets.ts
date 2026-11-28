@@ -285,11 +285,18 @@ export async function persistTicketedMediaUpload(input: {
     });
     return { storageKey: verified.storageKey, size: actual.size, sha256: actual.sha256, backend };
   } catch (error) {
-    await removeStoredMedia(input.storageKey).catch(() => undefined);
-    await pool.query(
-      "UPDATE media_upload_tickets SET status = 'rejected' WHERE id = $1 AND status <> 'consumed'",
-      [issued.ticketId],
-    ).catch(() => undefined);
+    let removed = false;
+    try {
+      await removeStoredMedia(input.storageKey);
+      removed = true;
+    } catch {
+      // Keep a retryable expired ticket if the backing store is unavailable.
+    }
+    if (removed) {
+      await pool.query("DELETE FROM media_upload_tickets WHERE id = $1 AND status <> 'consumed'", [issued.ticketId]).catch(() => undefined);
+    } else {
+      await pool.query("UPDATE media_upload_tickets SET status = 'expired', expires_at = now() WHERE id = $1 AND status <> 'consumed'", [issued.ticketId]).catch(() => undefined);
+    }
     throw error;
   }
 }
