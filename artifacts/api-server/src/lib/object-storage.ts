@@ -86,8 +86,7 @@ function signRequest(
   const canonicalHeaders = Object.entries(headers)
     .map(([name, value]) => [name.toLowerCase(), value.trim().replace(/\s+/g, " ")] as const)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, value]) => name + ":" + value + "
-")
+    .map(([name, value]) => name + ":" + value + "\n")
     .join("");
   const signedHeaders = Object.keys(headers).map(name => name.toLowerCase()).sort().join(";");
   const canonicalRequest = [
@@ -97,11 +96,9 @@ function signRequest(
     canonicalHeaders,
     signedHeaders,
     payloadHash,
-  ].join("
-");
+  ].join("\n");
   const scope = shortDate + "/" + cfg.region + "/s3/aws4_request";
-  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("
-");
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("\n");
   const kDate = hmac("AWS4" + cfg.secretAccessKey, shortDate);
   const kRegion = hmac(kDate, cfg.region);
   const kService = hmac(kRegion, "s3");
