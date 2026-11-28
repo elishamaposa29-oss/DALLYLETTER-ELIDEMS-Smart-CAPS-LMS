@@ -215,7 +215,7 @@ test("HTTP media delivery denies another account's unreferenced submission draft
     ]);
     const serveAs = async (actor: Record<string, unknown>, range?: string) => {
       const app = express();
-      app.use((req, _res, next) => { (req as Express.Request & { currentUser?: unknown }).currentUser = actor; next(); });
+      app.use((req, _res, next) => { Reflect.set(req, "currentUser", actor); next(); });
       app.use("/api", lessonsRouter);
       const server = app.listen(0);
       try {
