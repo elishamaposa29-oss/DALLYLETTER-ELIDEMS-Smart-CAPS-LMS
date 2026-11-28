@@ -28,8 +28,7 @@ export default function TeacherQualifications(){
   const id=Number(saved.id);
   let documentId=saved.document_id??q.document_id??null;
   if(q.file){
-   const body=new FormData();body.append("file",q.file);
-   const uploaded=await request("/api/qualifications/"+id+"/document",{method:"POST",body});
+   const uploaded=await uploadRouteMedia<any>(q.file,token(),"/api/qualifications/"+id+"/document",{fileName:q.file.name});
    documentId=Number(uploaded.document?.id??uploaded.id??documentId)||documentId;
   }
   return {...q,id,document_id:documentId,file:null,verification_status:saved.verification_status||q.verification_status||"pending"};
