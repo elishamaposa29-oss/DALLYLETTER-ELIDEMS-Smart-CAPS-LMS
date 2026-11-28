@@ -411,7 +411,7 @@ registerDirectMediaUploadRoutes(router, "/users/me/avatar", [requireAuth], async
     try {
       const [user] = await db.update(usersTable).set({ avatarUrl }).where(eq(usersTable.id, actor.id)).returning(safeUserFields);
       if (!user) throw new Error("User not found");
-      const oldKey = typeof before?.avatarUrl === "string" ? before.avatarUrl.match(/^\\/api\\/lessons\\/media\\/([a-f0-9-]{36})\\?type=image\\/(?:jpeg|png|webp)$/i)?.[1] : null;
+      const oldKey = typeof before?.avatarUrl === "string" ? before.avatarUrl.match(/^\/api\/lessons\/media\/([a-f0-9-]{36})\?type=image\/(?:jpeg|png|webp)$/i)?.[1] : null;
       if (oldKey && oldKey !== uploaded.storageKey) await removeStoredMedia(oldKey).catch(() => undefined);
       return { ...user, createdAt: user.createdAt.toISOString() };
     } catch (error) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw error; }
@@ -473,7 +473,7 @@ registerDirectMediaUploadRoutes(router, "/users/me/cover", [requireAuth], async 
     try {
       await pool.query("INSERT INTO user_profile_covers(user_id,media_url,media_type,updated_at) VALUES($1,$2,$3,now()) ON CONFLICT(user_id) DO UPDATE SET media_url=EXCLUDED.media_url,media_type=EXCLUDED.media_type,updated_at=now()", [actor.id, mediaUrl, mimeType]);
     } catch (error) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw error; }
-    const oldKey = typeof prior.rows[0]?.media_url === "string" ? prior.rows[0].media_url.match(/^\\/api\\/lessons\\/media\\/([a-f0-9-]{36})\\?type=/i)?.[1] : null;
+    const oldKey = typeof prior.rows[0]?.media_url === "string" ? prior.rows[0].media_url.match(/^\/api\/lessons\/media\/([a-f0-9-]{36})\?type=/i)?.[1] : null;
     if (oldKey && oldKey !== uploaded.storageKey) await removeStoredMedia(oldKey).catch(() => undefined);
     return { coverUrl: mediaUrl, coverType: mimeType };
   },
