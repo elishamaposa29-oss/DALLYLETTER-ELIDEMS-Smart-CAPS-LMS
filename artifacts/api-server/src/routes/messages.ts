@@ -13,7 +13,7 @@ import {
 import { requireAuth } from "../lib/auth-middleware";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, persistUploadedMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole, canAccessManager } from "../lib/auth-middleware";
