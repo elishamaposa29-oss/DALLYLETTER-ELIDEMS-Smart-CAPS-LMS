@@ -450,7 +450,7 @@ test("authorized private media redirects to an object-scoped short-lived URL aft
   await new Promise<void>(resolve => server.once("listening", resolve));
   const address = server.address();
   assert.ok(address && typeof address !== "string");
-  const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION"] as const;
+  const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION","MEDIA_S3_SIGNED_READS_ENABLED"] as const;
   const prior = env.map(key => process.env[key]);
   const originalFetch = globalThis.fetch;
   process.env.MEDIA_S3_ENDPOINT = "https://objects.example.test";
@@ -458,6 +458,7 @@ test("authorized private media redirects to an object-scoped short-lived URL aft
   process.env.MEDIA_S3_ACCESS_KEY_ID = "test-access";
   process.env.MEDIA_S3_SECRET_ACCESS_KEY = "test-secret";
   process.env.MEDIA_S3_REGION = "auto";
+  process.env.MEDIA_S3_SIGNED_READS_ENABLED = "true";
   let headRequests = 0;
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     assert.equal(init?.method, "HEAD");
