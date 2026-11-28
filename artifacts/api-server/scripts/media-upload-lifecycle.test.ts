@@ -1,4 +1,6 @@
 import test, { after } from "node:test";
+import express from "express";
+import lessonsRouter from "../src/routes/lessons";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
@@ -189,6 +191,52 @@ test("expired unconsumed tickets are swept and their orphan objects removed", as
   assert.ok(result.scanned >= 1);
   const remaining = await pool.query("SELECT id FROM media_upload_tickets WHERE id=$1", [orphan.ticketId]);
   assert.equal(remaining.rows.length, 0);
+});
+
+test("HTTP media delivery denies another account's unreferenced submission draft and permits its uploader", async () => {
+  await pool.query("UPDATE users SET role='student' WHERE id=$1", [userA]);
+  const dir = await mkdtemp(path.join(tmpdir(), "dallyletter-media-route-"));
+  const localPath = path.join(dir, "private.pdf");
+  const bytes = Buffer.from("%PDF-1.7\\nPrivate submission media route test\\n%%EOF\\n");
+  await writeFile(localPath, bytes);
+  const storageKey = randomUUID();
+  storageKeys.push(storageKey);
+  try {
+    await persistTicketedMediaUpload({
+      localPath, storageKey, mimeType: "application/pdf",
+      binding: {
+        userId: userA, routeKey: "assignments.submission-material",
+        targetType: "learner-submission-draft", targetId: String(userA), maxBytes: 1024 * 1024,
+      },
+    });
+    const [actorA, actorB] = await Promise.all([
+      pool.query("SELECT * FROM users WHERE id=$1", [userA]),
+      pool.query("SELECT * FROM users WHERE id=$1", [userB]),
+    ]);
+    const serveAs = async (actor: Record<string, unknown>, range?: string) => {
+      const app = express();
+      app.use((req, _res, next) => { (req as Express.Request & { currentUser?: unknown }).currentUser = actor; next(); });
+      app.use("/api", lessonsRouter);
+      const server = app.listen(0);
+      try {
+        const address = server.address();
+        assert.ok(address && typeof address !== "string");
+        return await fetch(`http://127.0.0.1:${address.port}/api/lessons/media/${storageKey}?type=application/pdf`, {
+          headers: range ? { Range: range } : {},
+        });
+      } finally {
+        await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      }
+    };
+    const denied = await serveAs(actorB.rows[0] as Record<string, unknown>);
+    assert.equal(denied.status, 403);
+    const allowed = await serveAs(actorA.rows[0] as Record<string, unknown>, "bytes=0-5");
+    assert.equal(allowed.status, 206);
+    assert.equal(allowed.headers.get("content-range"), `bytes 0-5/${bytes.length}`);
+    assert.deepEqual(Buffer.from(await allowed.arrayBuffer()), bytes.subarray(0, 6));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("the shared lesson-media endpoint invokes resource-aware ticket authorization", async () => {
