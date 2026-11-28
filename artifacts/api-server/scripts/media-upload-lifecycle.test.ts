@@ -701,11 +701,11 @@ test("expiration boundary is inclusive and failed expired-object deletion is ret
   });
   storageKeys.push(ticket.storageKey);
   await pool.query("UPDATE media_upload_tickets SET expires_at=now()+interval '1 day' WHERE id=$1", [ticket.ticketId]);
-  const beforeExpiry = await cleanupExpiredMediaUploads(50);
+  await cleanupExpiredMediaUploads(50);
   const stillIssued = await pool.query("SELECT status FROM media_upload_tickets WHERE id=$1", [ticket.ticketId]);
   assert.equal(stillIssued.rows[0]?.status, "issued", "future expiry must not be swept");
 
-  await pool.query("UPDATE media_upload_tickets SET expires_at=now()-interval '1 second' WHERE id=$1", [ticket.ticketId]);
+  await pool.query("UPDATE media_upload_tickets SET expires_at=now() WHERE id=$1", [ticket.ticketId]);
   const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION"] as const;
   const prior = env.map(key => process.env[key]);
   const originalFetch = globalThis.fetch;
