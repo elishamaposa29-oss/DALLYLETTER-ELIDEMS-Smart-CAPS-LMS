@@ -100,3 +100,25 @@
 - Add integration tests with a disposable PostgreSQL instance for chunk boundaries, malformed/unsatisfiable/suffix/open-ended ranges, missing chunks, empty objects, integrity, fallback, deletion and authorization on each route family.
 - Provider contract integration tests need a disposable S3-compatible endpoint; verify streamed PUT, GET/Range, 404, delete and checksum. No production credentials are needed for these tests.
 - Audit the exact legacy document/media route handlers and Android attachment consumers before claiming the inventory is exhaustive; the route inventory above covers the shared storage key paths found by source search.
+
+
+## E. Media path audit (source-level; runtime verification pending)
+
+The current API media-storage adapter is shared by these upload/download surfaces:
+
+| Surface | Upload route/module | Stored delivery path | Notes |
+|---|---|---|---|
+| Lesson media | `routes/lessons.ts` | `/api/lessons/media/:storageKey` | Main authenticated media route; lesson preview and student lesson clients consume it |
+| Assignment materials and learner submissions | `routes/assignments.ts` | `/api/lessons/media/:storageKey` | Upload handlers persist to shared media storage; permission checks remain in route handlers |
+| Exercise question and answer media | `routes/exercises.ts` | `/api/lessons/media/:storageKey` | Both question/answer upload paths use shared persistence |
+| Hand-raise attachments | `routes/handRaises.ts` | `/api/lessons/media/:storageKey` | Uses shared storage; authorization is handled by hand-raise routes |
+| Profile avatars and covers | `routes/users.ts` | `/api/lessons/media/:storageKey` and profile document route | Private profile assets; never edge-cache publicly |
+| Chat attachments and voice messages | `routes/messages.ts` | `/api/messages/media/:storageKey` | Separate message authorization path; must remain account/participant protected |
+| Teacher documents | `routes/users.ts` | Profile/teacher-document download handler | Role-restricted document access; private/no-store |
+| Mobile offline media | `artifacts/dallyletter-mobile/components/OfflineMediaDownload.tsx` | Authenticated lesson media URL | Client downloads through API; offline file storage is distinct from service-worker cache |
+
+**Important gaps / follow-up:** this is a source-code route inventory, not proof that every feature's lifecycle works end-to-end. The shared adapter currently supports S3-compatible object storage and PostgreSQL chunks, while upload handlers still stage files through API-local temporary disk. No direct-to-provider upload exists yet. Message media uses its own route and needs separate authorization regression coverage before any redirect or edge-delivery change. Profile and teacher documents must remain private. External video URLs are not owned by this storage adapter.
+
+**Cache policy:** public immutable build assets may use long-lived edge caching; user-generated media, assignment submissions, message/voice attachments, avatars/covers, hand-raise evidence and teacher documents remain private/no-store at the API boundary. The service worker intentionally excludes all API/media URLs and Range requests; this avoids stale or cross-account private data but means media is not automatically available offline unless the explicit mobile/web offline-download workflow saves it.
+
+**Instrumentation:** API logs now emit aggregate media transfer events with operation, backend, outcome, duration, byte count, range flag and HTTP status only. Storage keys, URLs, user IDs, signed URLs and file metadata are intentionally excluded. Validate log volume and dashboards before enabling high-volume production sampling.
