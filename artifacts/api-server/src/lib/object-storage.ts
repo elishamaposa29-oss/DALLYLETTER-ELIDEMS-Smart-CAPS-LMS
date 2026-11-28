@@ -149,6 +149,19 @@ export async function getObject(storageKey: string, range?: string): Promise<Res
   return response;
 }
 
+export async function headObject(storageKey: string): Promise<{ size: number; mimeType: string | null } | null> {
+  const cfg = config();
+  if (!cfg) return null;
+  const signed = signRequest(cfg, "HEAD", `media/${storageKey}`);
+  const response = await fetch(signed.url, { method: "HEAD", headers: signed.headers });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Object storage metadata read failed: HTTP ${response.status}`);
+  const rawSize = response.headers.get("content-length");
+  const size = rawSize && /^\\d+$/.test(rawSize) ? Number(rawSize) : NaN;
+  if (!Number.isSafeInteger(size) || size < 0) throw new Error("Object storage returned invalid content length");
+  return { size, mimeType: response.headers.get("content-type") };
+}
+
 export async function deleteObject(storageKey: string): Promise<void> {
   const cfg = config();
   if (!cfg) return;
