@@ -15,7 +15,7 @@ try {
     format: "cjs",
     sourcemap: "inline",
   });
-  const result = spawnSync(process.execPath, ["--test", outfile], { stdio: "inherit" });
+  const result = spawnSync(process.execPath, ["--test", outfile], { stdio: "inherit", env: { ...process.env, NODE_ENV: "production" } });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
 } finally {
