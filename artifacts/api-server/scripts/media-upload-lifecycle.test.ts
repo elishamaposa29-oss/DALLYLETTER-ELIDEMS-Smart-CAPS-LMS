@@ -1,7 +1,7 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pool } from "@workspace/db";
@@ -130,4 +130,26 @@ test("expired unconsumed tickets are swept and their orphan objects removed", as
   assert.ok(result.scanned >= 1);
   const remaining = await pool.query("SELECT id FROM media_upload_tickets WHERE id=$1", [orphan.ticketId]);
   assert.equal(remaining.rows.length, 0);
+});
+
+test("every file-backed media route uses ticket persistence behind its existing authorization guard", async () => {
+  const routes = [
+    { file: "src/routes/lessons.ts", route: "router.post(\"/lessons/media\", requireAuth", guard: "authorizeLessonMediaUpload" },
+    { file: "src/routes/assignments.ts", route: 'router.post("/material", requireAuth', guard: "canManageAcademicContent" },
+    { file: "src/routes/assignments.ts", route: 'router.post("/submission-material", requireAuth', guard: 'req.currentUser?.role !== "student"' },
+    { file: "src/routes/exercises.ts", route: 'router.post("/answer-media", requireAuth', guard: "requireAuth" },
+    { file: "src/routes/exercises.ts", route: 'router.post("/question-media", requireAuth', guard: 'requireManagerPermissionIfManager("users.override.teacher")' },
+    { file: "src/routes/handRaises.ts", route: 'router.post("/raise-hand/with-media", requireAuth', guard: "requireAuth" },
+    { file: "src/routes/messages.ts", route: 'router.post("/messages/media", requireAuth', guard: "canAccessGroup" },
+    { file: "src/routes/users.ts", route: 'router.post("/users/me/avatar", requireAuth', guard: "requireAuth" },
+    { file: "src/routes/users.ts", route: 'router.post("/users/me/cover", requireAuth', guard: "requireAuth" },
+  ];
+  const contents = new Map<string, string>();
+  for (const route of routes) {
+    if (!contents.has(route.file)) contents.set(route.file, await readFile(route.file, "utf8"));
+    const source = contents.get(route.file)!;
+    assert.ok(source.includes(route.route), `Missing protected route ${route.route}`);
+    assert.ok(source.includes(route.guard), `Missing route authorization contract ${route.guard}`);
+    assert.ok(source.includes("persistTicketedMediaUpload"), `Route file ${route.file} bypasses ticketed persistence`);
+  }
 });
