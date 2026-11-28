@@ -151,6 +151,28 @@ registerDirectMediaUploadRoutes(router, "/question-media", [requireAuth, require
     .where(and(eq(exerciseQuestionsTable.id, questionId), eq(exerciseQuestionsTable.exerciseId, exerciseId)));
   if (!question) return null;
   return { routeKey: "exercises.question-media", targetType: "exercise-question", targetId: `${exerciseId}:${questionId}`, maxBytes: MAX_MEDIA_SIZE_BYTES };
+}, {
+  onCompleted: async (request, uploaded) => {
+    const exerciseId = parseId(request.body?.exerciseId);
+    const questionId = parseId(request.body?.questionId);
+    const fileName = typeof request.body?.fileName === "string" ? request.body.fileName.trim().slice(0, 255) : "exercise-question-attachment";
+    const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+    if (!exerciseId || !questionId || !mimeType) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw new Error("Invalid exercise attachment metadata"); }
+    const [question] = await db.select().from(exerciseQuestionsTable)
+      .where(and(eq(exerciseQuestionsTable.id, questionId), eq(exerciseQuestionsTable.exerciseId, exerciseId)));
+    if (!question) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw new Error("Exercise question no longer exists"); }
+    const config = question.config && typeof question.config === "object" && !Array.isArray(question.config) ? question.config as Record<string, unknown> : {};
+    const previous = config.attachment && typeof config.attachment === "object" && !Array.isArray(config.attachment) ? config.attachment as Record<string, unknown> : {};
+    const previousKey = typeof previous.url === "string" ? previous.url.match(/\\/api\\/lessons\\/media\\/([a-f0-9-]{36})/i)?.[1] : null;
+    const attachmentUrl = `/api/lessons/media/${uploaded.storageKey}?type=${encodeURIComponent(mimeType)}`;
+    try {
+      const [saved] = await db.update(exerciseQuestionsTable).set({ config: { ...config, attachment: { url: attachmentUrl, fileName, mimeType, size: uploaded.size } } })
+        .where(and(eq(exerciseQuestionsTable.id, questionId), eq(exerciseQuestionsTable.exerciseId, exerciseId))).returning({ id: exerciseQuestionsTable.id });
+      if (!saved) throw new Error("Question attachment target disappeared before save");
+    } catch (error) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw error; }
+    if (previousKey && previousKey !== uploaded.storageKey) await removeStoredMedia(previousKey).catch(() => undefined);
+    return { attachmentUrl, fileName, mimeType, size: uploaded.size };
+  },
 });
 
 async function writeAudit(userId: number, action: string, targetId: number, details: Record<string, unknown>) {
