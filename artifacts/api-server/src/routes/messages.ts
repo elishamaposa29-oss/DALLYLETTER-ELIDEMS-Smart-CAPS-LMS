@@ -146,7 +146,14 @@ function messageMediaPath(storageKey: string): string {
   return `/api/messages/media/${storageKey}`;
 }
 
-router.post("/messages/media", requireAuth, (req, res, next): void => {\n  void authorizeMessageMediaUpload(req, res, next).catch(next);\n});\n\nrouter.post("/messages/media", requireAuth, (req, res, next): void => {\n  authorizeMessageMediaUpload(req, res, (error?: unknown) => {\n    if (error) { next(error); return; }\n    uploadMessageMedia(req, res, next);\n  });\n});\n\nfunction uploadMessageMedia(req: Express.Request, res: Express.Response, next: Express.NextFunction): void {
+router.post("/messages/media", requireAuth, (req, res, next): void => {
+  authorizeMessageMediaUpload(req, res, (error?: unknown) => {
+    if (error) { next(error); return; }
+    uploadMessageMedia(req, res, next);
+  });
+});
+
+function uploadMessageMedia(req: Express.Request, res: Express.Response, next: Express.NextFunction): void {
   voiceUpload.single("file")(req, res, (error) => {
     void (async () => {
       if (error || !req.file) {
@@ -193,7 +200,7 @@ router.post("/messages/media", requireAuth, (req, res, next): void => {\n  void 
       res.status(500).json({ error: "Media upload failed" });
     });
   });
-});
+}
 
 router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise<void> => {
   res.setHeader("Cache-Control", "private, no-store");
