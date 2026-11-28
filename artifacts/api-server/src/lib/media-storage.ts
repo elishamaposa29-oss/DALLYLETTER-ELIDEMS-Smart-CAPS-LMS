@@ -33,6 +33,28 @@ const allowedMimeTypes = new Set([
 
 export const MAX_MEDIA_SIZE_BYTES = 250 * 1024 * 1024;
 
+export interface ParsedMediaRange { start: number; end: number; }
+
+export function parseMediaByteRange(range: string, size: number): ParsedMediaRange | null {
+  if (!Number.isSafeInteger(size) || size <= 0) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+  if (!match || (!match[1] && !match[2])) return null;
+  let start: number;
+  let end: number;
+  if (!match[1]) {
+    const suffixLength = Number(match[2]);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return null;
+    start = Math.max(size - suffixLength, 0);
+    end = size - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] ? Number(match[2]) : size - 1;
+  }
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end || start >= size) return null;
+  return { start, end: Math.min(end, size - 1) };
+}
+
+
 export function isAllowedMediaType(mimeType: string): boolean {
   return allowedMimeTypes.has(mimeType.split(";", 1)[0].trim().toLowerCase());
 }
@@ -166,28 +188,12 @@ export async function streamStoredMedia(storageKey: string, range?: string): Pro
     });
   }
 
-  let start = 0;
-  let end = size - 1;
-  if (range) {
-    const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-    if (!match || (!match[1] && !match[2])) {
-      return new Response(null, { status: 416, headers: { "Content-Range": \`bytes */\${size}\`, "Accept-Ranges": "bytes" } });
-    }
-    if (!match[1]) {
-      const suffixLength = Number(match[2]);
-      if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
-        return new Response(null, { status: 416, headers: { "Content-Range": \`bytes */\${size}\`, "Accept-Ranges": "bytes" } });
-      }
-      start = Math.max(size - suffixLength, 0);
-    } else {
-      start = Number(match[1]);
-    }
-    end = match[2] ? Number(match[2]) : size - 1;
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end || start >= size) {
-      return new Response(null, { status: 416, headers: { "Content-Range": \`bytes */\${size}\`, "Accept-Ranges": "bytes" } });
-    }
-    end = Math.min(end, size - 1);
+  const parsedRange = range ? parseMediaByteRange(range, size) : null;
+  if (range && !parsedRange) {
+    return new Response(null, { status: 416, headers: { "Content-Range": \`bytes */\${size}\`, "Accept-Ranges": "bytes" } });
   }
+  const start = parsedRange?.start ?? 0;
+  const end = parsedRange?.end ?? size - 1;
 
   const firstChunk = Math.floor(start / DB_MEDIA_CHUNK_BYTES);
   const lastChunk = Math.floor(end / DB_MEDIA_CHUNK_BYTES);
