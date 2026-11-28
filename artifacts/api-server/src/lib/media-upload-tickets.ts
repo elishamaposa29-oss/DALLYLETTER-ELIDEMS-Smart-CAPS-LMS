@@ -113,12 +113,12 @@ async function verifyMimeSignature(path:string,mimeType:string):Promise<void>{
 async function hashFile(path:string):Promise<string>{
   const h=createHash("sha256");for await(const chunk of createReadStream(path))h.update(chunk);return h.digest("hex");
 }
-async function hashResponse(response:Response):Promise<{size:number;sha256:string}>{
+async function hashResponse(response:Response):Promise<{size:number;sha256:string;prefix:Buffer}>{
   if(!response.body)throw new Error("Stored object has no body");
-  const h=createHash("sha256");const reader=response.body.getReader();let size=0;
-  try{while(true){const p=await reader.read();if(p.done)break;size+=p.value.byteLength;h.update(p.value);}}
+  const h=createHash("sha256");const reader=response.body.getReader();let size=0;const prefix=Buffer.alloc(16);let prefixLength=0;
+  try{while(true){const p=await reader.read();if(p.done)break;size+=p.value.byteLength;h.update(p.value);if(prefixLength<16){const count=Math.min(16-prefixLength,p.value.byteLength);Buffer.from(p.value.subarray(0,count)).copy(prefix,prefixLength);prefixLength+=count;}}}
   finally{reader.releaseLock();}
-  return {size,sha256:h.digest("hex")};
+  return {size,sha256:h.digest("hex"),prefix:prefix.subarray(0,prefixLength)};
 }
 
 function verifyMimeSignatureBytes(b:Buffer,mimeType:string):void{
@@ -173,10 +173,7 @@ export async function completeDirectMediaUpload(input:{
     await pool.query("UPDATE media_upload_tickets SET status='rejected' WHERE token_hash=$1 AND status='issued'",[digestTicket(input.ticket)]).catch(()=>undefined);
     throw new Error("Uploaded object byte count or SHA-256 checksum does not match the authorized ticket");
   }
-  const prefixResponse=await streamStoredMedia(storageKey,"bytes=0-15");
-  if(!prefixResponse||prefixResponse.status!==206)throw new Error("Uploaded object signature could not be verified");
-  const prefixBytes=prefixResponse.body?Buffer.from(await prefixResponse.arrayBuffer()):Buffer.alloc(0);
-  verifyMimeSignatureBytes(prefixBytes,input.mimeType);
+  verifyMimeSignatureBytes(actual.prefix,input.mimeType);
   await markMediaUploadVerified({ticket:input.ticket,userId:input.userId,routeKey:input.routeKey,targetType:input.targetType,targetId:input.targetId,mimeType:input.mimeType,size:actual.size,sha256:actual.sha256});
   const consumed=await consumeMediaUploadTicket({ticket:input.ticket,userId:input.userId,routeKey:input.routeKey,targetType:input.targetType,targetId:input.targetId,mimeType:input.mimeType});
   return {storageKey:consumed.storageKey,size:consumed.size,sha256:consumed.sha256};
