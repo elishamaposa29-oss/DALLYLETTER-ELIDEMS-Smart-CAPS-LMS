@@ -129,6 +129,15 @@ test("ticketed private media is isolated by account while published lesson media
   assert.equal(await authorizeTicketedMediaDelivery(privateTicket.storageKey, actorA.rows[0]), true);
   assert.equal(await authorizeTicketedMediaDelivery(privateTicket.storageKey, actorB.rows[0]), false);
 
+  assert.equal(await authorizeTicketedMediaDelivery(randomUUID(), actorB.rows[0]), false);
+  const rejectedTicket = await issueMediaUploadTicket({
+    userId: userA, routeKey: "test.rejected", targetType: "draft",
+    targetId: String(userA), mimeType: "application/pdf", maxBytes: 1024,
+  });
+  storageKeys.push(rejectedTicket.storageKey);
+  await pool.query("UPDATE media_upload_tickets SET status='rejected' WHERE id=$1", [rejectedTicket.ticketId]);
+  assert.equal(await authorizeTicketedMediaDelivery(rejectedTicket.storageKey, actorB.rows[0]), false);
+
   await pool.query("UPDATE users SET role='teacher' WHERE id=$1", [userA]);
   const sharedTicket = await issueMediaUploadTicket({
     userId: userA, routeKey: "lessons.media", targetType: "lesson-media-library",
