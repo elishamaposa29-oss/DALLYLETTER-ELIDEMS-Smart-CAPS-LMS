@@ -540,3 +540,66 @@ test("direct object upload completion verifies HEAD metadata, actual bytes, chec
     });
   }
 });
+
+
+test("direct upload ticket and completion endpoints run through real authenticated HTTP routes", async () => {
+  const bytes = Buffer.from("%PDF-1.7\\nDallyletter HTTP direct upload route test\\n%%EOF\\n");
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    Reflect.set(req, "currentUser", { id: userA, role: "teacher", isManager: false, name: "Media Test Teacher" });
+    next();
+  });
+  app.use("/api", lessonsRouter);
+  const server = app.listen(0);
+  await new Promise<void>(resolve => server.once("listening", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION"] as const;
+  const prior = env.map(key => process.env[key]);
+  const originalFetch = globalThis.fetch;
+  process.env.MEDIA_S3_ENDPOINT = "https://objects.example.test";
+  process.env.MEDIA_S3_BUCKET = "private-media";
+  process.env.MEDIA_S3_ACCESS_KEY_ID = "test-access";
+  process.env.MEDIA_S3_SECRET_ACCESS_KEY = "test-secret";
+  process.env.MEDIA_S3_REGION = "auto";
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(init?.method) === "HEAD") {
+      return { status: 200, ok: true, headers: new Headers({
+        "content-length": String(bytes.length), "content-type": "application/pdf",
+      }) } as Response;
+    }
+    if (String(init?.method) === "GET") return new Response(bytes, { status: 200, headers: { "content-type": "application/pdf" } });
+    throw new Error("Unexpected storage request");
+  }) as typeof fetch;
+  try {
+    const issuedResponse = await originalFetch(`http://127.0.0.1:${address.port}/api/lessons/media/direct-upload-ticket`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mimeType: "application/pdf", size: bytes.length, sha256 }),
+    });
+    assert.equal(issuedResponse.status, 201);
+    const issued = await issuedResponse.json() as { ticket: string; storageKey: string; uploadUrl: string; method: string; headers: Record<string,string> };
+    assert.ok(issued.ticket);
+    assert.ok(issued.storageKey);
+    assert.equal(issued.method, "PUT");
+    assert.ok(issued.uploadUrl.includes("X-Amz-Signature"));
+    storageKeys.push(issued.storageKey);
+    const completedResponse = await originalFetch(`http://127.0.0.1:${address.port}/api/lessons/media/direct-upload-complete`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticket: issued.ticket, mimeType: "application/pdf" }),
+    });
+    assert.equal(completedResponse.status, 201);
+    const completed = await completedResponse.json() as { mediaUrl: string; size: number; sha256: string };
+    assert.equal(completed.size, bytes.length);
+    assert.equal(completed.sha256, sha256);
+    assert.ok(completed.mediaUrl.includes(issued.storageKey));
+  } finally {
+    globalThis.fetch = originalFetch;
+    env.forEach((key, index) => {
+      if (prior[index] === undefined) delete process.env[key];
+      else process.env[key] = prior[index];
+    });
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+});
