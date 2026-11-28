@@ -11,7 +11,7 @@ import {
   SendMessageBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
-import { createPresignedPrivateMediaRead, headObject, isObjectStorageConfigured } from "../lib/object-storage";
+import { createPresignedPrivateMediaRead, headObject, isPrivateObjectDeliveryEnabled } from "../lib/object-storage";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
 import { getAIProvider } from "../lib/ai-provider";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
@@ -226,7 +226,7 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
     // Re-check conversation membership on every request, then send object-backed
     // media through a short-lived, object-scoped GET. The browser retains its
     // Range header on the redirect, avoiding Render as the video/voice proxy.
-    if (isObjectStorageConfigured()) {
+    if (isPrivateObjectDeliveryEnabled()) {
       const metadata = await headObject(storageKey);
       if (metadata) {
         const signed = createPresignedPrivateMediaRead(storageKey, 120);
