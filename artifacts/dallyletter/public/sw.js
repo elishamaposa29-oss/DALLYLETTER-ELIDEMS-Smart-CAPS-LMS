@@ -1,5 +1,5 @@
-const SHELL_CACHE = "dallyletter-shell-v5";
-const ASSET_CACHE = "dallyletter-assets-v5";
+const SHELL_CACHE = "dallyletter-shell-v6";
+const ASSET_CACHE = "dallyletter-assets-v6";
 const SHELL = ["/", "/manifest.json", "/favicon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 const MAX_ASSETS = 48;
 const MAX_ASSET_BYTES = 2 * 1024 * 1024;
@@ -60,7 +60,9 @@ self.addEventListener("fetch", event => {
 
   if (request.mode === "navigate" || request.destination === "document") {
     event.respondWith(fetch(request).then(response => {
-      if (response.ok && response.type === "basic") {
+      const policy = response.headers.get("cache-control") || "";
+      // Never store authenticated or non-cacheable SPA route documents under the shared root key.
+      if (url.pathname === "/" && response.ok && response.type === "basic" && !/\\b(private|no-store|no-cache)\\b/i.test(policy)) {
         caches.open(SHELL_CACHE).then(cache => cache.put("/", response.clone())).catch(() => undefined);
       }
       return response;
