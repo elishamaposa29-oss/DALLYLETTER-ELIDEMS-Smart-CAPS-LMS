@@ -803,6 +803,10 @@ test("consumed-object retention boundary preserves recent media and retries orph
 
 
 test("real HTTP upload route families reject unauthorized actors before multipart file handling", async () => {
+  // The permission middleware refreshes the actor from PostgreSQL; use two real
+  // test accounts with authoritative roles rather than trusting synthetic headers.
+  await pool.query("UPDATE users SET role='student', is_manager=false, manager_level=NULL WHERE id=$1", [userA]);
+  await pool.query("UPDATE users SET role='teacher', is_manager=false, manager_level=NULL WHERE id=$1", [userB]);
   const app = express();
   app.use((req, _res, next) => {
     const role = String(req.header("x-test-role") || "student");
@@ -836,7 +840,7 @@ test("real HTTP upload route families reject unauthorized actors before multipar
       form.append("file", new Blob(["unauthorized upload probe"], { type: "application/pdf" }), "probe.pdf");
       const response = await fetch(`http://127.0.0.1:${address.port}${item.path}`, {
         method: "POST",
-        headers: { "x-test-role": item.role, "x-test-user-id": String(userA) },
+        headers: { "x-test-role": item.role, "x-test-user-id": String(item.role === "teacher" ? userB : userA) },
         body: form,
       });
       assert.equal(response.status, item.expected, item.label + " must be rejected before accepting multipart bytes");
