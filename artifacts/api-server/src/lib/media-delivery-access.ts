@@ -148,28 +148,45 @@ async function authorizeLegacyMediaReference(storageKey: string, actor: MediaPri
   if (assignment.rows.length) return true;
 
   const submission = await pool.query(
-    "SELECT s.student_id, a.teacher_id FROM public.assignment_submissions s JOIN public.assignments a ON a.id=s.assignment_id WHERE (s.file_url LIKE $1 OR s.content LIKE $1) LIMIT 1",
+    "SELECT s.student_id, a.teacher_id, u.role AS teacher_role, u.is_manager AS teacher_is_manager, u.manager_level AS teacher_manager_level FROM public.assignment_submissions s JOIN public.assignments a ON a.id=s.assignment_id LEFT JOIN public.users u ON u.id=a.teacher_id WHERE (s.file_url LIKE $1 OR s.content LIKE $1) LIMIT 1",
     [key],
   );
-  if (submission.rows[0] && (Number(submission.rows[0].student_id) === Number(actor.id) || Number(submission.rows[0].teacher_id) === Number(actor.id))) return true;
+  if (submission.rows[0]) {
+    const row = submission.rows[0];
+    if (Number(row.student_id) === Number(actor.id) || Number(row.teacher_id) === Number(actor.id)) return true;
+    if (canAccessManager(actor) && await managerHasPermission(actor, "recordbook.view")
+      && canModerateUser(actor, { role: row.teacher_role, isManager: row.teacher_is_manager, managerLevel: row.teacher_manager_level })) return true;
+  }
 
   const question = await pool.query(
-    "SELECT e.created_by, e.status FROM public.exercise_questions q JOIN public.exercises e ON e.id=q.exercise_id WHERE q.config::text LIKE $1 LIMIT 1",
+    "SELECT e.created_by, e.status, e.grade, u.role AS creator_role, u.is_manager AS creator_is_manager, u.manager_level AS creator_manager_level FROM public.exercise_questions q JOIN public.exercises e ON e.id=q.exercise_id LEFT JOIN public.users u ON u.id=e.created_by WHERE q.config::text LIKE $1 LIMIT 1",
     [key],
   );
-  if (question.rows[0] && (Number(question.rows[0].created_by) === Number(actor.id) || (["student", "learner", "prefect"].includes(role) && question.rows[0].status === "published"))) return true;
+  if (question.rows[0]) {
+    const row = question.rows[0];
+    if (Number(row.created_by) === Number(actor.id)) return true;
+    if (canAccessManager(actor) && await managerHasPermission(actor, "users.override.teacher")
+      && canModerateUser(actor, { role: row.creator_role, isManager: row.creator_is_manager, managerLevel: row.creator_manager_level })) return true;
+    if (["student", "learner", "prefect"].includes(role) && row.status === "published"
+      && (grade == null || row.grade == null || String(row.grade).trim().toLowerCase() === grade.trim().toLowerCase())) return true;
+  }
 
   const answer = await pool.query(
-    "SELECT s.learner_id, e.created_by FROM public.exercise_answers a JOIN public.exercise_submissions s ON s.id=a.submission_id JOIN public.exercises e ON e.id=s.exercise_id WHERE (a.media_reference LIKE $1 OR a.draw_data::text LIKE $1) LIMIT 1",
+    "SELECT s.learner_id, e.created_by, u.role AS creator_role, u.is_manager AS creator_is_manager, u.manager_level AS creator_manager_level FROM public.exercise_answers a JOIN public.exercise_submissions s ON s.id=a.submission_id JOIN public.exercises e ON e.id=s.exercise_id LEFT JOIN public.users u ON u.id=e.created_by WHERE (a.media_reference LIKE $1 OR a.draw_data::text LIKE $1) LIMIT 1",
     [key],
   );
-  if (answer.rows[0] && (Number(answer.rows[0].learner_id) === Number(actor.id) || Number(answer.rows[0].created_by) === Number(actor.id))) return true;
+  if (answer.rows[0]) {
+    const row = answer.rows[0];
+    if (Number(row.learner_id) === Number(actor.id) || Number(row.created_by) === Number(actor.id)) return true;
+    if (canAccessManager(actor) && await managerHasPermission(actor, "recordbook.view")
+      && canModerateUser(actor, { role: row.creator_role, isManager: row.creator_is_manager, managerLevel: row.creator_manager_level })) return true;
+  }
 
   const handRaise = await pool.query(
     "SELECT h.student_id, c.teacher_id FROM public.hand_raises h JOIN public.classes c ON c.id=h.class_id WHERE h.media_url LIKE $1 LIMIT 1",
     [key],
   );
-  if (handRaise.rows[0] && (Number(handRaise.rows[0].student_id) === Number(actor.id) || Number(handRaise.rows[0].teacher_id) === Number(actor.id))) return true;
+  if (handRaise.rows[0] && (Number(handRaise.rows[0].student_id) === Number(actor.id) || Number(handRaise.rows[0].teacher_id) === Number(actor.id) || isSeniorManager(actor))) return true;
 
   const avatar = await pool.query("SELECT id FROM public.users WHERE avatar_url LIKE $1 LIMIT 1", [key]);
   if (avatar.rows[0] && await canViewProfileSection(actor, Number(avatar.rows[0].id), "overview")) return true;
