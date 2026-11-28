@@ -163,7 +163,7 @@ registerDirectMediaUploadRoutes(router, "/question-media", [requireAuth, require
     if (!question) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw new Error("Exercise question no longer exists"); }
     const config = question.config && typeof question.config === "object" && !Array.isArray(question.config) ? question.config as Record<string, unknown> : {};
     const previous = config.attachment && typeof config.attachment === "object" && !Array.isArray(config.attachment) ? config.attachment as Record<string, unknown> : {};
-    const previousKey = typeof previous.url === "string" ? previous.url.match(/\\/api\\/lessons\\/media\\/([a-f0-9-]{36})/i)?.[1] : null;
+    const previousKey = typeof previous.url === "string" ? previous.url.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1] : null;
     const attachmentUrl = `/api/lessons/media/${uploaded.storageKey}?type=${encodeURIComponent(mimeType)}`;
     try {
       const [saved] = await db.update(exerciseQuestionsTable).set({ config: { ...config, attachment: { url: attachmentUrl, fileName, mimeType, size: uploaded.size } } })
