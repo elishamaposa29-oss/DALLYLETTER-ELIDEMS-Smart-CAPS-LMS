@@ -10,6 +10,7 @@ import { pool } from "@workspace/db";
 import {
   cleanupExpiredMediaUploads,
   cleanupOrphanedMediaStagingFiles,
+  cleanupUnreferencedConsumedMedia,
   consumeMediaUploadTicket,
   ensureMediaUploadTicketSchema,
   issueMediaUploadTicket,
@@ -200,6 +201,30 @@ test("expired unconsumed tickets are swept and their orphan objects removed", as
   assert.ok(result.scanned >= 1);
   const remaining = await pool.query("SELECT id FROM media_upload_tickets WHERE id=$1", [orphan.ticketId]);
   assert.equal(remaining.rows.length, 0);
+});
+
+test("aged consumed uploads without a published resource reference are cleaned safely", async () => {
+  const orphan = await issueMediaUploadTicket({
+    userId: userB, routeKey: "assignments.submission-material", targetType: "learner-submission-draft",
+    targetId: String(userB), mimeType: "application/pdf", maxBytes: 1024,
+  });
+  storageKeys.push(orphan.storageKey);
+  const sha256 = "d".repeat(64);
+  await markMediaUploadVerified({
+    ticket: orphan.ticket, userId: userB, routeKey: "assignments.submission-material",
+    targetType: "learner-submission-draft", targetId: String(userB), mimeType: "application/pdf",
+    size: 100, sha256,
+  });
+  await consumeMediaUploadTicket({
+    ticket: orphan.ticket, userId: userB, routeKey: "assignments.submission-material",
+    targetType: "learner-submission-draft", targetId: String(userB), mimeType: "application/pdf",
+  });
+  await pool.query("UPDATE media_upload_tickets SET consumed_at=now()-interval '91 days' WHERE id=$1", [orphan.ticketId]);
+  const result = await cleanupUnreferencedConsumedMedia(50, 90);
+  assert.ok(result.scanned >= 1);
+  assert.ok(result.deleted >= 1);
+  const status = await pool.query("SELECT status FROM media_upload_tickets WHERE id=$1", [orphan.ticketId]);
+  assert.equal(status.rows[0]?.status, "rejected");
 });
 
 test("HTTP media delivery denies another account's unreferenced submission draft and permits its uploader", async () => {
