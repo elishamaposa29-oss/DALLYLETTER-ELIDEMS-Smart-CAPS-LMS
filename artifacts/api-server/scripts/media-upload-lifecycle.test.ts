@@ -692,3 +692,111 @@ test("real lesson upload HTTP lifecycle publishes only after verification and se
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
 });
+
+
+test("expiration boundary is inclusive and failed expired-object deletion is retried", async () => {
+  const ticket = await issueMediaUploadTicket({
+    userId: userB, routeKey: "test.expiry-boundary", targetType: "draft",
+    targetId: "expiry-boundary", mimeType: "application/pdf", maxBytes: 1024,
+  });
+  storageKeys.push(ticket.storageKey);
+  await pool.query("UPDATE media_upload_tickets SET expires_at=now()+interval '1 day' WHERE id=$1", [ticket.ticketId]);
+  const beforeExpiry = await cleanupExpiredMediaUploads(50);
+  const stillIssued = await pool.query("SELECT status FROM media_upload_tickets WHERE id=$1", [ticket.ticketId]);
+  assert.equal(stillIssued.rows[0]?.status, "issued", "future expiry must not be swept");
+
+  await pool.query("UPDATE media_upload_tickets SET expires_at=now()-interval '1 second' WHERE id=$1", [ticket.ticketId]);
+  const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION"] as const;
+  const prior = env.map(key => process.env[key]);
+  const originalFetch = globalThis.fetch;
+  process.env.MEDIA_S3_ENDPOINT = "https://objects.example.test";
+  process.env.MEDIA_S3_BUCKET = "private-media";
+  process.env.MEDIA_S3_ACCESS_KEY_ID = "test-access";
+  process.env.MEDIA_S3_SECRET_ACCESS_KEY = "test-secret";
+  process.env.MEDIA_S3_REGION = "auto";
+  let deleteAttempts = 0;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.method, "DELETE");
+    deleteAttempts += 1;
+    return deleteAttempts === 1
+      ? new Response("temporary storage outage", { status: 503 })
+      : new Response(null, { status: 204 });
+  }) as typeof fetch;
+  try {
+    const firstSweep = await cleanupExpiredMediaUploads(50);
+    assert.ok(firstSweep.failed >= 1, "failed object deletion must be observable");
+    const retained = await pool.query("SELECT status FROM media_upload_tickets WHERE id=$1", [ticket.ticketId]);
+    assert.equal(retained.rows[0]?.status, "expired", "failed deletion must retain retry state");
+
+    const secondSweep = await cleanupExpiredMediaUploads(50);
+    assert.ok(secondSweep.deleted >= 1, "subsequent cleanup must retry deletion");
+    const removed = await pool.query("SELECT id FROM media_upload_tickets WHERE id=$1", [ticket.ticketId]);
+    assert.equal(removed.rows.length, 0);
+    assert.equal(deleteAttempts, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    env.forEach((key, index) => {
+      if (prior[index] === undefined) delete process.env[key];
+      else process.env[key] = prior[index];
+    });
+  }
+});
+
+test("consumed-object retention boundary preserves recent media and retries orphan deletion", async () => {
+  const ticket = await issueMediaUploadTicket({
+    userId: userB, routeKey: "assignments.submission-material", targetType: "learner-submission-draft",
+    targetId: String(userB), mimeType: "application/pdf", maxBytes: 1024,
+  });
+  storageKeys.push(ticket.storageKey);
+  const sha256 = "f".repeat(64);
+  await markMediaUploadVerified({
+    ticket: ticket.ticket, userId: userB, routeKey: "assignments.submission-material",
+    targetType: "learner-submission-draft", targetId: String(userB), mimeType: "application/pdf",
+    size: 100, sha256,
+  });
+  await consumeMediaUploadTicket({
+    ticket: ticket.ticket, userId: userB, routeKey: "assignments.submission-material",
+    targetType: "learner-submission-draft", targetId: String(userB), mimeType: "application/pdf",
+  });
+  await pool.query("UPDATE media_upload_tickets SET consumed_at=now()-interval '89 days' WHERE id=$1", [ticket.ticketId]);
+  const beforeRetention = await cleanupUnreferencedConsumedMedia(50, 90);
+  const recent = await pool.query("SELECT status FROM media_upload_tickets WHERE id=$1", [ticket.ticketId]);
+  assert.equal(recent.rows[0]?.status, "consumed", "media inside retention window must be preserved");
+  assert.equal(beforeRetention.deleted, 0);
+
+  await pool.query("UPDATE media_upload_tickets SET consumed_at=now()-interval '91 days' WHERE id=$1", [ticket.ticketId]);
+  const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION"] as const;
+  const prior = env.map(key => process.env[key]);
+  const originalFetch = globalThis.fetch;
+  process.env.MEDIA_S3_ENDPOINT = "https://objects.example.test";
+  process.env.MEDIA_S3_BUCKET = "private-media";
+  process.env.MEDIA_S3_ACCESS_KEY_ID = "test-access";
+  process.env.MEDIA_S3_SECRET_ACCESS_KEY = "test-secret";
+  process.env.MEDIA_S3_REGION = "auto";
+  let deleteAttempts = 0;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.method, "DELETE");
+    deleteAttempts += 1;
+    return deleteAttempts === 1
+      ? new Response("temporary storage outage", { status: 503 })
+      : new Response(null, { status: 204 });
+  }) as typeof fetch;
+  try {
+    const firstAttempt = await cleanupUnreferencedConsumedMedia(50, 90);
+    assert.equal(firstAttempt.failed, 1);
+    const retained = await pool.query("SELECT status FROM media_upload_tickets WHERE id=$1", [ticket.ticketId]);
+    assert.equal(retained.rows[0]?.status, "consumed", "failed deletion must remain eligible for retry");
+
+    const secondAttempt = await cleanupUnreferencedConsumedMedia(50, 90);
+    assert.equal(secondAttempt.deleted, 1);
+    const cleaned = await pool.query("SELECT status FROM media_upload_tickets WHERE id=$1", [ticket.ticketId]);
+    assert.equal(cleaned.rows[0]?.status, "rejected");
+    assert.equal(deleteAttempts, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    env.forEach((key, index) => {
+      if (prior[index] === undefined) delete process.env[key];
+      else process.env[key] = prior[index];
+    });
+  }
+});
