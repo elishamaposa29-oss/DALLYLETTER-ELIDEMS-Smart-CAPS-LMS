@@ -18,7 +18,6 @@ try {
     platform: "node",
     format: "cjs",
     sourcemap: "inline",
-    packages: "external",
   });
   const result = spawnSync(process.execPath, ["--test", outfile], {
     stdio: "inherit",
