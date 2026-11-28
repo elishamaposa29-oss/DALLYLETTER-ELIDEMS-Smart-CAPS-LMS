@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { webcrypto } from "node:crypto";
+import { webcrypto, randomUUID } from "node:crypto";
+import { createServer } from "node:http";
+import { gzipSync } from "node:zlib";
+import { spawn } from "node:child_process";
+import path from "node:path";
 import worker from "../src/index.mjs";
 
 if (!globalThis.crypto) Object.defineProperty(globalThis, "crypto", { value: webcrypto });
@@ -99,4 +103,83 @@ test("HEAD, CORS preflight, origin restrictions and unsupported methods are enfo
   assert.equal(denied.status, 403);
   const post = await worker.fetch(new Request(url, { method: "POST" }), environment());
   assert.equal(post.status, 405);
+});
+
+
+test("delivery benchmark measures compressed bytes, decoded bytes, cold/warm latency and partial-range egress", async () => {
+  const payload = Buffer.alloc(128 * 1024, 0x41);
+  const compressed = gzipSync(payload);
+  const server = createServer((request, response) => {
+    const range = request.headers.range;
+    if (range) {
+      const match = /^bytes=(\\d+)-(\\d+)$/.exec(range);
+      if (!match) {
+        response.writeHead(416, { "Content-Range": "bytes */" + payload.length });
+        response.end();
+        return;
+      }
+      const start = Number(match[1]);
+      const end = Math.min(Number(match[2]), payload.length - 1);
+      const part = payload.subarray(start, end + 1);
+      response.writeHead(206, {
+        "Content-Length": String(part.length),
+        "Content-Range": "bytes " + start + "-" + end + "/" + payload.length,
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=60",
+        "X-Cache": request.headers["cache-control"] === "no-cache" ? "MISS" : "HIT",
+      });
+      response.end(part);
+      return;
+    }
+    response.writeHead(200, {
+      "Content-Length": String(compressed.length),
+      "Content-Encoding": "gzip",
+      "Cache-Control": "public, max-age=60",
+      "X-Cache": request.headers["cache-control"] === "no-cache" ? "MISS" : "HIT",
+    });
+    response.end(compressed);
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [path.resolve(process.cwd(), "scripts/media-delivery-benchmark.mjs")], {
+        env: {
+          ...process.env,
+          MEDIA_BENCH_URL: "http://127.0.0.1:" + address.port + "/media/" + randomUUID(),
+          MEDIA_BENCH_RUNS: "4",
+          MEDIA_BENCH_RANGE: "bytes=0-65535",
+          MEDIA_BENCH_INCLUDE_RANGE: "true",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.setEncoding("utf8").on("data", chunk => { stdout += chunk; });
+      child.stderr.setEncoding("utf8").on("data", chunk => { stderr += chunk; });
+      child.once("error", reject);
+      child.once("close", code => resolve({ code, stdout, stderr }));
+    });
+    assert.equal(result.code, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    const full = report.modes.find(mode => mode.mode === "full");
+    const ranged = report.modes.find(mode => mode.mode === "range");
+    assert.equal(full.cold.samples, 1);
+    assert.equal(full.warm.samples, 3);
+    assert.deepEqual(full.cold.cacheStatuses, ["MISS"]);
+    assert.deepEqual(full.warm.cacheStatuses, ["HIT"]);
+    assert.ok(full.cold.compressionRatio < 1);
+    assert.ok(full.cold.compressionSavingsPercent > 0);
+    assert.equal(full.totalDecodedBodyBytes, payload.length * 4);
+    assert.equal(ranged.rangeResponses, 4);
+    assert.equal(ranged.rangeIgnoredResponses, 0);
+    assert.equal(ranged.results[0].decodedBodyBytes, 65536);
+    assert.equal(report.totalDecodedResponseBodyBytes, payload.length * 4 + 65536 * 4);
+    assert.ok(report.totalEncodedResponseBodyBytes > 0);
+    assert.ok(report.measuredClientVisibleEgressMiB > 0);
+    assert.ok(full.cold.p95LatencyMs >= full.cold.medianLatencyMs);
+  } finally {
+    await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
 });
