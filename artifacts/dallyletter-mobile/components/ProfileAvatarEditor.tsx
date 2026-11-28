@@ -1,4 +1,5 @@
 import { getApiUrl } from "@workspace/api-client-react";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useState } from "react";
@@ -20,11 +21,7 @@ export function ProfileAvatarEditor() {
       const asset = picked.assets[0];
       const mime = asset.mimeType === "image/png" ? "image/png" : "image/jpeg";
       setBusy(true);
-      const form = new FormData();
-      form.append("file", { uri: asset.uri, name: mime === "image/png" ? "profile.png" : "profile.jpg", type: mime } as any);
-      const response = await fetch(getApiUrl("/api/users/me/avatar"), { method: "POST", headers: { Authorization: "Bearer " + token }, body: form });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Could not save your profile photo.");
+      const data = await uploadRouteMedia(asset.uri, mime === "image/png" ? "profile.png" : "profile.jpg", mime, token, "/api/users/me/avatar");
       await login({ ...user, avatarUrl: data.avatarUrl || null }, token);
     } catch (error) { Alert.alert("Photo upload failed", error instanceof Error ? error.message : "Please try again."); }
     finally { setBusy(false); }
