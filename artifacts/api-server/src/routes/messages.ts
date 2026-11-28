@@ -162,6 +162,8 @@ router.post("/messages/media", requireAuth, (req, res): void => {
 });
 
 router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
   const storageKey = String(req.params.storageKey);
   if (!/^[a-f0-9-]{36}$/i.test(storageKey)) { res.status(400).json({ error: "Invalid media key" }); return; }
   const requestedType = typeof req.query.type === "string" ? req.query.type : "";
