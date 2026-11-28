@@ -153,6 +153,13 @@ test("ticketed private media is isolated by account while published lesson media
   }
 });
 
+test("public media share links cannot be issued for private ticketed upload types", async () => {
+  const source = await readFile("src/routes/lessons.ts", "utf8");
+  assert.match(source, /SELECT user_id, route_key, target_type FROM media_upload_tickets/);
+  assert.match(source, /ticket\.route_key !== "lessons\.media" \|\| ticket\.target_type !== "lesson-media-library"/);
+  assert.match(source, /This media type cannot be shared publicly/);
+});
+
 test("MIME spoofing is rejected before a ticket is created", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "dallyletter-media-spoof-"));
   const localPath = path.join(dir, "spoof.png");
