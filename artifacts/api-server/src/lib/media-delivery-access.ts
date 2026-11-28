@@ -23,6 +23,7 @@ export async function authorizeTicketedMediaDelivery(storageKey: string, actor: 
   if (Number(ticket.user_id) === Number(actor.id) || isOwnerRole(actor.role)) return true;
 
   const role = normalizeRole(actor.role);
+  const grade = typeof actor.grade === "string" ? actor.grade : null;
   const key = `%${storageKey}%`;
   switch (ticket.route_key) {
     case "lessons.media": {
