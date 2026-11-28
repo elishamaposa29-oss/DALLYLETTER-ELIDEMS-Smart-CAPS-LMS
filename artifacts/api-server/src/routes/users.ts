@@ -1094,25 +1094,43 @@ router.post("/qualifications/:id/document", requireAuth, (req,res,next):void => 
       const file=req.file;
       if(!file){res.status(415).json({error:"Choose a PDF, JPG, or PNG file."});return;}
       const actor=req.currentUser!;
+      let storageKey:string|null=null;
+      let mediaPersisted=false;
       try{
         const id=Number(req.params.id);
         if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
         const q=await pool.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1",[id]);
         if(!q.rows.length){res.status(404).json({error:"Qualification not found."});return;}
-        if(q.rows[0].user_id!==actor.id&&!isOwnerRole(actor.role)){res.status(403).json({error:"You cannot upload documents for this qualification."});return;}
-        if(q.rows[0].user_id!==actor.id&&isOwnerRole(actor.role)){res.status(403).json({error:"Upload documents from the qualification owner's account."});return;}
+        if(Number(q.rows[0].user_id)!==actor.id){res.status(403).json({error:"Upload qualification evidence from the qualification owner's account."});return;}
         const bytes=await readFile(file.path);
         const validPdf=file.mimetype==="application/pdf"&&bytes.subarray(0,5).toString()==="%PDF-";
         const validJpeg=file.mimetype==="image/jpeg"&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff;
         const validPng=file.mimetype==="image/png"&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
-        if(!validPdf&&!validJpeg&&!validPng){await import("node:fs/promises").then(fs=>fs.unlink(file.path).catch(()=>undefined));res.status(415).json({error:"The file content does not match a supported PDF/JPG/PNG type."});return;}
-        const storageKey=createMediaStorageKey();
-        await persistTicketedMediaUpload({ localPath: file.path, storageKey, mimeType: file.mimetype, binding: { userId: actor.id, routeKey: "qualifications.document", targetType: "teacher-qualification", targetId: String(id), maxBytes: 10 * 1024 * 1024 } });
-        const result=await pool.query("INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data,storage_key) VALUES($1,'certificate',$2,$3,$4,decode('', 'hex'),$5) RETURNING id,file_name,mime_type,size_bytes,created_at",[actor.id,file.originalname.replace(/[\\r\\n]/g,"").slice(0,255)||"qualification-document",file.mimetype,bytes.length,storageKey]);
-        await pool.query("UPDATE teacher_qualifications SET document_id=$1 WHERE id=$2 AND user_id=$3",[result.rows[0].id,id,actor.id]);
-        res.status(201).json({document:result.rows[0],message:"Document uploaded; qualification remains pending verification."});
-      }catch(error){next(error);}
-    })();
+        if(!validPdf&&!validJpeg&&!validPng){res.status(415).json({error:"The file content does not match a supported PDF/JPG/PNG type."});return;}
+        storageKey=createMediaStorageKey();
+        await persistTicketedMediaUpload({ localPath:file.path, storageKey, mimeType:file.mimetype, binding:{ userId:actor.id, routeKey:"qualifications.document", targetType:"teacher-qualification", targetId:String(id), maxBytes:10*1024*1024 } });
+        mediaPersisted=true;
+        const client=await pool.connect();
+        try{
+          await client.query("BEGIN");
+          const current=await client.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1 FOR UPDATE",[id]);
+          if(!current.rows.length||Number(current.rows[0].user_id)!==actor.id)throw new Error("Qualification ownership changed during document upload");
+          const result=await client.query("INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data,storage_key) VALUES($1,'certificate',$2,$3,$4,decode('', 'hex'),$5) RETURNING id,file_name,mime_type,size_bytes,created_at",[actor.id,file.originalname.replace(/[\\r\\n]/g,"").slice(0,255)||"qualification-document",file.mimetype,bytes.length,storageKey]);
+          const linked=await client.query("UPDATE teacher_qualifications SET document_id=$1 WHERE id=$2 AND user_id=$3 RETURNING id",[result.rows[0].id,id,actor.id]);
+          if(!linked.rows.length)throw new Error("Qualification disappeared before its document could be linked");
+          await client.query("COMMIT");
+          res.status(201).json({document:result.rows[0],message:"Document uploaded; qualification remains pending verification."});
+        }catch(error){
+          await client.query("ROLLBACK").catch(()=>undefined);
+          throw error;
+        }finally{client.release();}
+      }catch(error){
+        if(mediaPersisted&&storageKey)await removeStoredMedia(storageKey).catch(()=>undefined);
+        next(error);
+      }finally{
+        await import("node:fs/promises").then(fs=>fs.unlink(file.path).catch(()=>undefined));
+      }
+    })().catch(next);
   });
 });
 
