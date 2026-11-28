@@ -143,6 +143,22 @@ function verifyMimeSignatureBytes(b:Buffer,mimeType:string):void{
  * then streams the object back once to independently verify its byte count,
  * SHA-256 and file signature before consuming the one-time ticket.
  */
+/** Mark an abandoned direct upload expired and delete its object immediately.
+ * If deletion fails, the scheduled expiry sweeper retries it safely. */
+export async function abortDirectMediaUpload(input:{
+  ticket:string; userId:number; routeKey:string; targetType:string; targetId:string; mimeType:string;
+}):Promise<boolean>{
+  const result=await pool.query(`UPDATE media_upload_tickets SET status='expired',expires_at=now()
+    WHERE token_hash=$1 AND user_id=$2 AND route_key=$3 AND target_type=$4 AND target_id=$5 AND mime_type=$6
+      AND status IN ('issued','uploaded') RETURNING storage_key`,
+    [digestTicket(input.ticket),input.userId,input.routeKey,input.targetType,input.targetId,input.mimeType]);
+  const row=result.rows[0] as {storage_key:string}|undefined;
+  if(!row)return false;
+  await removeStoredMedia(String(row.storage_key));
+  await pool.query("DELETE FROM media_upload_tickets WHERE token_hash=$1 AND status='expired'",[digestTicket(input.ticket)]);
+  return true;
+}
+
 export async function completeDirectMediaUpload(input:{
   ticket:string; userId:number; routeKey:string; targetType:string; targetId:string; mimeType:string;
 }):Promise<{storageKey:string;size:number;sha256:string}>{
