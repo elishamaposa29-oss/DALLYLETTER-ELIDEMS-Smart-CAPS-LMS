@@ -147,10 +147,10 @@ function messageMediaPath(storageKey: string): string {
 }
 
 router.post("/messages/media", requireAuth, (req, res, next): void => {
-  authorizeMessageMediaUpload(req, res, (error?: unknown) => {
+  void authorizeMessageMediaUpload(req, res, (error?: unknown) => {
     if (error) { next(error); return; }
     uploadMessageMedia(req, res, next);
-  });
+  }).catch(next);
 });
 
 function uploadMessageMedia(req: Express.Request, res: Express.Response, next: Express.NextFunction): void {
