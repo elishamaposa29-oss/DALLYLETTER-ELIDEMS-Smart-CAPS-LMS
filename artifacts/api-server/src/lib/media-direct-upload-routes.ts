@@ -36,13 +36,13 @@ export function registerDirectMediaUploadRoutes(
   options: DirectUploadOptions = {},
 ): void {
   router.post(path + "/direct-upload-ticket", ...middleware, async (request, response): Promise<void> => {
-    if (!isObjectStorageConfigured()) { response.status(503).json({ error: "Direct media uploads require configured private object storage." }); return; }
     const metadata = uploadMetadata(request);
     if (!metadata) { response.status(400).json({ error: "A supported MIME type, exact file size and optional SHA-256 checksum are required." }); return; }
     try {
       const binding = await resolveBinding(request);
       if (!binding) { response.status(403).json({ error: "You are not authorized to upload media to this resource." }); return; }
       if (metadata.size > (binding.maxBytes ?? MAX_MEDIA_SIZE_BYTES)) { response.status(413).json({ error: "The selected file exceeds this upload route's size limit." }); return; }
+      if (!isObjectStorageConfigured()) { response.status(503).json({ error: "Direct media uploads require configured private object storage." }); return; }
       const issued = await issueMediaUploadTicket({
         userId: request.currentUser!.id, routeKey: binding.routeKey, targetType: binding.targetType,
         targetId: binding.targetId, mimeType: metadata.mimeType, maxBytes: Math.min(metadata.size, binding.maxBytes ?? MAX_MEDIA_SIZE_BYTES),
