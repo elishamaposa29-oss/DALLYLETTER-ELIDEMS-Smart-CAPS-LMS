@@ -13,6 +13,7 @@ import { getAIProvider } from "../lib/ai-provider";
 import { hasContentPermission } from "../lib/content-permissions";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { registerDirectMediaUploadRoutes } from "../lib/media-direct-upload-routes";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
@@ -130,6 +131,26 @@ router.post("/question-media", requireAuth, requireManagerPermissionIfManager("u
       res.status(201).json({attachmentUrl,fileName:file.originalname,mimeType:file.mimetype,size:file.size});
     })().catch(next);
   });
+});
+
+registerDirectMediaUploadRoutes(router, "/answer-media", [requireAuth], async request => {
+  const actor = request.currentUser!;
+  if (actor.role !== learnerRole) return null;
+  return { routeKey: "exercises.answer-media", targetType: "learner-answer-media-draft", targetId: String(actor.id), maxBytes: MAX_MEDIA_SIZE_BYTES };
+});
+
+registerDirectMediaUploadRoutes(router, "/question-media", [requireAuth, requireManagerPermissionIfManager("users.override.teacher")], async request => {
+  const actor = request.currentUser!;
+  if (!canManageAcademicContent(actor)) return null;
+  const exerciseId = parseId(request.body?.exerciseId);
+  const questionId = parseId(request.body?.questionId);
+  if (!exerciseId || !questionId) return null;
+  const [exercise] = await db.select().from(exercisesTable).where(eq(exercisesTable.id, exerciseId));
+  if (!exercise || !(await canManageExerciseForUser(actor, exercise.createdBy, "users.override.teacher", exerciseId, "edit"))) return null;
+  const [question] = await db.select({ id: exerciseQuestionsTable.id }).from(exerciseQuestionsTable)
+    .where(and(eq(exerciseQuestionsTable.id, questionId), eq(exerciseQuestionsTable.exerciseId, exerciseId)));
+  if (!question) return null;
+  return { routeKey: "exercises.question-media", targetType: "exercise-question", targetId: `${exerciseId}:${questionId}`, maxBytes: MAX_MEDIA_SIZE_BYTES };
 });
 
 async function writeAudit(userId: number, action: string, targetId: number, details: Record<string, unknown>) {
