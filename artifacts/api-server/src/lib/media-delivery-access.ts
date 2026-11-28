@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { isOwnerRole, normalizeRole } from "./role-access";
+import { canViewProfileSection } from "../routes/profileConnections";
 
 type MediaPrincipal = NonNullable<Express.Request["currentUser"]>;
 
@@ -84,10 +85,11 @@ export async function authorizeTicketedMediaDelivery(storageKey: string, actor: 
       return Boolean(row && (Number(row.student_id) === Number(actor.id) || Number(row.teacher_id) === Number(actor.id)));
     }
     case "users.me.avatar":
-    case "users.me.cover":
-      // Profile imagery is deliberately displayable in authenticated profile
-      // and directory surfaces; private profile fields remain independently gated.
-      return true;
+    case "users.me.cover": {
+      const profileOwnerId = Number(ticket.target_id);
+      if (!Number.isSafeInteger(profileOwnerId) || profileOwnerId <= 0) return false;
+      return canViewProfileSection(actor, profileOwnerId, "overview");
+    }
     default:
       return false;
   }
