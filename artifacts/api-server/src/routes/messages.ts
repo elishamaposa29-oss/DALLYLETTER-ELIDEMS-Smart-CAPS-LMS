@@ -11,6 +11,7 @@ import {
   SendMessageBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
+import { createPresignedPrivateMediaRead, headObject, isObjectStorageConfigured } from "../lib/object-storage";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
 import { getAIProvider } from "../lib/ai-provider";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
@@ -222,6 +223,22 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
     : message.recipientId != null && (isOwnerRole(user.role) || ((message.recipientId === user.id || message.senderId === user.id) && await canViewPrivateConversation(user, message.senderId === user.id ? message.recipientId : message.senderId)));
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
   try {
+    // Re-check conversation membership on every request, then send object-backed
+    // media through a short-lived, object-scoped GET. The browser retains its
+    // Range header on the redirect, avoiding Render as the video/voice proxy.
+    if (isObjectStorageConfigured()) {
+      const metadata = await headObject(storageKey);
+      if (metadata) {
+        const signed = createPresignedPrivateMediaRead(storageKey, 120);
+        res.status(307);
+        res.setHeader("Location", signed.url);
+        res.setHeader("Cache-Control", "private, no-store, max-age=0");
+        res.setHeader("Referrer-Policy", "no-referrer");
+        res.setHeader("Accept-Ranges", "bytes");
+        res.end();
+        return;
+      }
+    }
     const remote = await streamStoredMedia(storageKey, req.headers.range);
     if (remote) {
       res.status(remote.status);
