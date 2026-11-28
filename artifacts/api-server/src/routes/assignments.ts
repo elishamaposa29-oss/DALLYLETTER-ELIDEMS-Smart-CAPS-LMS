@@ -58,7 +58,13 @@ function parseTotalMarks(value: unknown): number | null {
 }
 
 router.post("/material", requireAuth, (req, res): void => {
-  if (!canManageAcademicContent(req.currentUser!)) { res.status(403).json({ error: "Academic staff access required" }); return; }
+  const actor = req.currentUser!;
+  // Match assignment creation policy: only teachers and the platform Owner
+  // may publish reference materials. Manager access requires a separate
+  // explicit workflow and must not be inferred from the broad staff role.
+  if (!canManageAcademicContent(actor) || (canAccessManager(actor) && !isOwnerRole(actor.role))) {
+    res.status(403).json({ error: "Teacher or platform Owner access required" }); return;
+  }
   materialUpload.single("file")(req, res, (error) => {
     if (error) { res.status(400).json({ error: "A supported material file up to 250 MB is required" }); return; }
     const file = req.file;
