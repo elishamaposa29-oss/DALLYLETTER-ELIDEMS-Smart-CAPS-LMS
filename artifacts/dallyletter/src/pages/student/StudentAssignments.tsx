@@ -1,6 +1,7 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
 import { getApiUrl } from "@workspace/api-client-react";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -74,13 +75,7 @@ export default function StudentAssignments() {
     if (!file) return;
     setSubmissionFile(null);
     setUploadingSubmissionFile(true);
-    const body = new FormData();
-    body.append("file", file);
-    void fetch(getApiUrl("/api/assignments/submission-material"), { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body })
-      .then(async response => {
-        if (!response.ok) { const error = await response.json().catch(() => null) as { error?: string } | null; throw new Error(error?.error ?? "Attachment upload failed"); }
-        return response.json() as Promise<{ attachmentUrl: string; fileName: string }>;
-      })
+    void uploadRouteMedia<{ attachmentUrl: string; fileName: string }>(file, token(), "/api/assignments/submission-material")
       .then(result => setSubmissionFile({ url: result.attachmentUrl, fileName: result.fileName }))
       .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Attachment upload failed" }))
       .finally(() => setUploadingSubmissionFile(false));
