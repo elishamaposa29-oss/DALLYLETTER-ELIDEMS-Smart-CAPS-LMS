@@ -218,6 +218,7 @@ test("HTTP media delivery denies another account's unreferenced submission draft
       app.use((req, _res, next) => { Reflect.set(req, "currentUser", actor); next(); });
       app.use("/api", lessonsRouter);
       const server = app.listen(0);
+      await new Promise<void>(resolve => server.once("listening", resolve));
       try {
         const address = server.address();
         assert.ok(address && typeof address !== "string");
