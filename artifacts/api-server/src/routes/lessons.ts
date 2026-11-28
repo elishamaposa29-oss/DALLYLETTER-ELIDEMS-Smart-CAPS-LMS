@@ -31,6 +31,7 @@ import {
 } from "../lib/media-storage";
 import { hasContentPermission } from "../lib/content-permissions";
 import { isObjectStorageConfigured } from "../lib/object-storage";
+import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
 import { logger } from "../lib/logger";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
 
@@ -155,7 +156,7 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
       return;
     }
 
-    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+    persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: req.currentUser!.id, routeKey: "lessons.media", targetType: Number(req.query.groupId) > 0 ? "study-group-cover" : "lesson-media-library", targetId: String(Number(req.query.groupId) > 0 ? Number(req.query.groupId) : req.currentUser!.id), maxBytes: MAX_MEDIA_SIZE_BYTES } }).then(() => {
       res.status(201).json({
         mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
         storageKey: file.filename,
