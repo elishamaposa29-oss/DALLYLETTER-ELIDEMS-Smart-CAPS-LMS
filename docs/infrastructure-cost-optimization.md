@@ -63,3 +63,12 @@
 2. Render's canonical-looking `-4` API service is suspended for monthly quota exhaustion, so live service validation/deployment is currently blocked.
 3. The two Render recovery PostgreSQL instances visible to the workspace are suspended; one is past its listed expiry. The actual canonical production database must be positively identified before any database-cost migration.
 4. Existing media adapter proxies reads through Render, so R2 configuration alone is insufficient to meet the bandwidth objective. A secure delivery edge/direct upload design is required.
+
+
+## D. Public edge caching, offline assets and compression
+
+- Vercel edge caching is restricted to fingerprinted build assets (`/assets/*`, one-year immutable) and explicitly public image/icon paths with short revalidation windows. The authenticated SPA document (`/app.html`) is explicitly private/no-store; the former blanket public cache rule is removed so private routes and unknown paths do not inherit public caching.
+- Vercel's static delivery edge negotiates Brotli/Gzip where supported. Verify `Content-Encoding` and transferred bytes for JS, CSS and HTML on the live deployment; do not pre-compress user uploads or authenticated media.
+- The service worker caches only same-origin, successful, bounded static assets. It refuses private/no-store/no-cache responses, Range requests, API, media, uploads and auth paths. The asset cache has count and byte ceilings; quota failures remain non-fatal.
+- Cache budgets are deliberately small for low-storage Android devices. Cache Storage is opportunistic, not durable offline storage for learner records or submissions. Those continue to use their dedicated offline queue and synchronization contracts.
+- Measure with a repeatable before/after profile: cold and warm page load, bytes transferred, cache hit/miss, `Content-Encoding`, media Range response bytes, API egress and Render monthly transfer. Record device/network profile and avoid claiming savings until measured.
