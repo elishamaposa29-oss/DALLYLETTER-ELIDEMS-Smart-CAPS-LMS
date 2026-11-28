@@ -157,7 +157,7 @@ export async function headObject(storageKey: string): Promise<{ size: number; mi
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Object storage metadata read failed: HTTP ${response.status}`);
   const rawSize = response.headers.get("content-length");
-  const size = rawSize && /^\\d+$/.test(rawSize) ? Number(rawSize) : NaN;
+  const size = rawSize && /^\d+$/.test(rawSize) ? Number(rawSize) : NaN;
   if (!Number.isSafeInteger(size) || size < 0) throw new Error("Object storage returned invalid content length");
   return { size, mimeType: response.headers.get("content-type") };
 }
