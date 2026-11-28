@@ -11,7 +11,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { pool } from "@workspace/db";
 import {
   cleanupExpiredMediaUploads,
@@ -680,7 +680,7 @@ test("real lesson upload HTTP lifecycle publishes only after verification and se
       process.env.MEDIA_BENCH_URL = `http://127.0.0.1:${address.port}${uploaded.mediaUrl}`;
       process.env.MEDIA_BENCH_RUNS = "4";
       process.env.MEDIA_BENCH_INCLUDE_RANGE = "true";
-      const benchmarkPath = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../scripts/media-delivery-benchmark.mjs")).href;
+      const benchmarkPath = pathToFileURL(path.resolve(process.cwd(), "../../scripts/media-delivery-benchmark.mjs")).href;
       await import(benchmarkPath);
     } finally {
       benchmarkKeys.forEach((key,index) => {
