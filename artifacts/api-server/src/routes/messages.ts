@@ -153,7 +153,7 @@ router.post("/messages/media", requireAuth, (req, res, next): void => {
   }).catch(next);
 });
 
-function uploadMessageMedia(req: Express.Request, res: Express.Response, next: Express.NextFunction): void {
+function uploadMessageMedia(req: Express.Request, res: import("express").Response, next: Express.NextFunction): void {
   voiceUpload.single("file")(req, res, (error) => {
     void (async () => {
       if (error || !req.file) {
