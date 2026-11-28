@@ -11,7 +11,7 @@ export async function uploadRouteMedia(
   endpoint: string,
   fields: Record<string, string> = {},
 ): Promise<any> {
-  const auth = token ? { Authorization: "Bearer " + token } : {};
+  const auth: Record<string, string> = token ? { Authorization: "Bearer " + token } : {};
   const routeUrl = (suffix: string) => {
     const queryAt = endpoint.indexOf("?");
     const base = queryAt < 0 ? endpoint : endpoint.slice(0, queryAt);
