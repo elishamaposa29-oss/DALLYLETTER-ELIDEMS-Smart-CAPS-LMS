@@ -1,5 +1,5 @@
 import { pool } from "@workspace/db";
-import { isOwnerRole, normalizeRole } from "./role-access";
+import { canAccessManager, canModerateUser, isOwnerRole, normalizeRole } from "./role-access";
 import { canViewProfileSection } from "../routes/profileConnections";
 
 type MediaPrincipal = NonNullable<Express.Request["currentUser"]>;
@@ -28,11 +28,18 @@ export async function authorizeTicketedMediaDelivery(storageKey: string, actor: 
       if (ticket.target_type === "study-group-cover") {
         const groupId = Number(ticket.target_id);
         if (!Number.isSafeInteger(groupId) || groupId <= 0) return false;
-        const [group] = (await pool.query("SELECT creator_id FROM public.study_groups WHERE id=$1", [groupId])).rows;
+        const [group] = (await pool.query(
+          "SELECT g.creator_id, u.role AS creator_role, u.is_manager AS creator_is_manager, u.manager_level AS creator_manager_level FROM public.study_groups g JOIN public.users u ON u.id=g.creator_id WHERE g.id=$1",
+          [groupId],
+        )).rows;
         if (!group) return false;
-        if (Number(group.creator_id) === Number(actor.id)) return true;
-        const member = await pool.query("SELECT 1 FROM public.study_group_members WHERE group_id=$1 AND user_id=$2 LIMIT 1", [groupId, actor.id]);
-        return member.rows.length > 0;
+        if (isOwnerRole(actor.role) || Number(group.creator_id) === Number(actor.id)) return true;
+        const creator = { role: group.creator_role, isManager: group.creator_is_manager, managerLevel: group.creator_manager_level };
+        if (isOwnerRole(creator.role)) return false;
+        if (canAccessManager(actor)) return canModerateUser(actor, creator);
+        // Study-group discovery/detail APIs allow authenticated non-manager
+        // users to view groups before joining; preserve that visibility rule.
+        return true;
       }
       if (ticket.target_type === "lesson-media-library") {
         const grade = typeof actor.grade === "string" ? actor.grade : null;
