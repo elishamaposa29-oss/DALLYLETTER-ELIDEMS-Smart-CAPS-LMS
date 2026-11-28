@@ -169,7 +169,7 @@ export async function streamStoredMedia(storageKey: string, range?: string): Pro
 
   const parsedRange = range ? parseMediaByteRange(range, size) : null;
   if (range && !parsedRange) {
-    return new Response(null, { status: 416, headers: { "Content-Range": \`bytes */\${size}\`, "Accept-Ranges": "bytes" } });
+    return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}`, "Accept-Ranges": "bytes" } });
   }
   const start = parsedRange?.start ?? 0;
   const end = parsedRange?.end ?? size - 1;
@@ -196,7 +196,7 @@ export async function streamStoredMedia(storageKey: string, range?: string): Pro
     "Content-Length": String(body.length),
   });
   if (range) {
-    headers.set("Content-Range", \`bytes \${start}-\${end}/\${size}\`);
+    headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
     emitMediaMetric({ operation: "download", backend: "postgres-chunks", outcome: "success", durationMs: mediaDurationSince(startedAt), bytes: body.length, range: true, statusCode: 206 });
     return new Response(body, { status: 206, headers });
   }
