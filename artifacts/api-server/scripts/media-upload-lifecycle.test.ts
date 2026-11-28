@@ -869,6 +869,47 @@ test("real HTTP upload route families reject unauthorized actors before multipar
 });
 
 
+test("real assignment direct-upload completion rejects another account's ticket", async () => {
+  await pool.query("UPDATE users SET role='student', is_manager=false, manager_level='junior' WHERE id=$1", [userA]);
+  const foreign = await issueMediaUploadTicket({
+    userId: userB, routeKey: "assignments.submission-material", targetType: "learner-submission-draft",
+    targetId: String(userB), mimeType: "application/pdf", maxBytes: 1024,
+  });
+  storageKeys.push(foreign.storageKey);
+  const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION"] as const;
+  const prior = env.map(key => process.env[key]);
+  process.env.MEDIA_S3_ENDPOINT = "https://objects.example.test";
+  process.env.MEDIA_S3_BUCKET = "private-media";
+  process.env.MEDIA_S3_ACCESS_KEY_ID = "test-access";
+  process.env.MEDIA_S3_SECRET_ACCESS_KEY = "test-secret";
+  process.env.MEDIA_S3_REGION = "auto";
+  const app = express();
+  app.use((req, _res, next) => {
+    Reflect.set(req, "currentUser", { id: userA, role: "student", isManager: false, name: "Media Test A" });
+    next();
+  });
+  app.use("/api/assignments", assignmentsRouter);
+  const server = app.listen(0);
+  await new Promise<void>(resolve => server.once("listening", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/assignments/submission-material/direct-upload-complete`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticket: foreign.ticket, mimeType: "application/pdf" }),
+    });
+    assert.equal(response.status, 400, "the route must reject a valid ticket owned by a different account");
+    const stillUnconsumed = await pool.query("SELECT status FROM media_upload_tickets WHERE id=$1", [foreign.ticketId]);
+    assert.equal(stillUnconsumed.rows[0]?.status, "issued", "cross-account completion must not consume the owner's ticket");
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    env.forEach((key,index) => {
+      if (prior[index] === undefined) delete process.env[key];
+      else process.env[key] = prior[index];
+    });
+  }
+});
+
 test("benchmark suppresses throughput for tiny fixtures instead of reporting misleading MiB/s", async () => {
   const source = await readFile("../../scripts/media-delivery-benchmark.mjs", "utf8").catch(async () => readFile("../../../scripts/media-delivery-benchmark.mjs", "utf8"));
   assert.match(source, /minimumThroughputBytes/);
