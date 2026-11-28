@@ -194,9 +194,9 @@ function presignObject(
     .join("&");
   const canonicalHeaders = contentType && method === "PUT"
     ? "content-type:" + contentType.trim().replace(/\s+/g, " ") + "\nhost:" + url.host + "\n"
-    : "host:" + url.host + "\\n";
+    : "host:" + url.host + "\n";
   const canonicalRequest = [method, url.pathname || "/", canonicalQuery, canonicalHeaders, signedHeaders, "UNSIGNED-PAYLOAD"].join("\n");
-  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("\\n");
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("\n");
   const kDate = hmac("AWS4" + cfg.secretAccessKey, shortDate);
   const kRegion = hmac(kDate, cfg.region);
   const kService = hmac(kRegion, "s3");
