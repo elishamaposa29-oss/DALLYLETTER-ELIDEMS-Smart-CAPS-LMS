@@ -11,6 +11,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { pool } from "@workspace/db";
 import {
   cleanupExpiredMediaUploads,
@@ -635,6 +636,24 @@ test("real lesson upload HTTP lifecycle publishes only after verification and se
     assert.equal(range.status, 206);
     assert.equal(range.headers.get("content-range"), `bytes 0-9/${bytes.length}`);
     assert.equal((await range.arrayBuffer()).byteLength, 10);
+
+    // Execute the existing benchmark against this real PostgreSQL-backed HTTP
+    // route: repeated full reads, repeated byte ranges, encoded/decoded bytes,
+    // cache headers, TTFB and end-to-end latency are emitted as JSON in CI.
+    const benchmarkKeys = ["MEDIA_BENCH_URL","MEDIA_BENCH_RUNS","MEDIA_BENCH_INCLUDE_RANGE"] as const;
+    const benchmarkPrior = benchmarkKeys.map(key => process.env[key]);
+    try {
+      process.env.MEDIA_BENCH_URL = `http://127.0.0.1:${address.port}${uploaded.mediaUrl}`;
+      process.env.MEDIA_BENCH_RUNS = "4";
+      process.env.MEDIA_BENCH_INCLUDE_RANGE = "true";
+      const benchmarkPath = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../scripts/media-delivery-benchmark.mjs")).href;
+      await import(benchmarkPath);
+    } finally {
+      benchmarkKeys.forEach((key,index) => {
+        if (benchmarkPrior[index] === undefined) delete process.env[key];
+        else process.env[key] = benchmarkPrior[index];
+      });
+    }
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
