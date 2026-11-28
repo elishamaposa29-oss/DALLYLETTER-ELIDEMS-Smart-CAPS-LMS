@@ -1,0 +1,133 @@
+import test, { after } from "node:test";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { pool } from "@workspace/db";
+import {
+  cleanupExpiredMediaUploads,
+  consumeMediaUploadTicket,
+  ensureMediaUploadTicketSchema,
+  issueMediaUploadTicket,
+  markMediaUploadVerified,
+  persistTicketedMediaUpload,
+} from "../src/lib/media-upload-tickets";
+import { removeStoredMedia } from "../src/lib/media-storage";
+
+const suffix = randomUUID();
+let userA = 0;
+let userB = 0;
+const storageKeys: string[] = [];
+
+after(async () => {
+  for (const key of storageKeys) await removeStoredMedia(key).catch(() => undefined);
+  if (userA) await pool.query("DELETE FROM users WHERE id = $1", [userA]);
+  if (userB) await pool.query("DELETE FROM users WHERE id = $1", [userB]);
+  await pool.end();
+});
+
+test("route-bound tickets reject cross-account, route, target and MIME replay", async () => {
+  await ensureMediaUploadTicketSchema();
+  const a = await pool.query(
+    "INSERT INTO users(email,password_hash,name,role) VALUES($1,'test-only-hash','Media Test A','student') RETURNING id",
+    [`media-a-${suffix}@example.test`],
+  );
+  const b = await pool.query(
+    "INSERT INTO users(email,password_hash,name,role) VALUES($1,'test-only-hash','Media Test B','student') RETURNING id",
+    [`media-b-${suffix}@example.test`],
+  );
+  userA = Number(a.rows[0].id);
+  userB = Number(b.rows[0].id);
+
+  const ticket = await issueMediaUploadTicket({
+    userId: userA, routeKey: "test.route", targetType: "assignment-submission",
+    targetId: "assignment-123", mimeType: "application/pdf", maxBytes: 1024,
+  });
+  storageKeys.push(ticket.storageKey);
+  const sha256 = "a".repeat(64);
+  const common = {
+    ticket: ticket.ticket, userId: userA, routeKey: "test.route",
+    targetType: "assignment-submission", targetId: "assignment-123",
+    mimeType: "application/pdf", size: 100, sha256,
+  };
+
+  await assert.rejects(markMediaUploadVerified({ ...common, userId: userB }));
+  await assert.rejects(markMediaUploadVerified({ ...common, routeKey: "other.route" }));
+  await assert.rejects(markMediaUploadVerified({ ...common, targetId: "assignment-999" }));
+  await assert.rejects(markMediaUploadVerified({ ...common, mimeType: "image/png" }));
+
+  const verified = await markMediaUploadVerified(common);
+  assert.equal(verified.storageKey, ticket.storageKey);
+  await assert.rejects(consumeMediaUploadTicket({
+    ticket: ticket.ticket, userId: userB, routeKey: "test.route",
+    targetType: "assignment-submission", targetId: "assignment-123", mimeType: "application/pdf",
+  }));
+  const consumed = await consumeMediaUploadTicket({
+    ticket: ticket.ticket, userId: userA, routeKey: "test.route",
+    targetType: "assignment-submission", targetId: "assignment-123", mimeType: "application/pdf",
+  });
+  assert.equal(consumed.ticketId, ticket.ticketId);
+  await assert.rejects(consumeMediaUploadTicket({
+    ticket: ticket.ticket, userId: userA, routeKey: "test.route",
+    targetType: "assignment-submission", targetId: "assignment-123", mimeType: "application/pdf",
+  }));
+});
+
+test("uploaded PDF is MIME-sniffed, persisted, read back and SHA-256 verified", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "dallyletter-media-lifecycle-"));
+  const localPath = path.join(dir, "sample.pdf");
+  const bytes = Buffer.from("%PDF-1.7\nDallyletter media lifecycle integration test\n%%EOF\n");
+  await writeFile(localPath, bytes);
+  const storageKey = randomUUID();
+  storageKeys.push(storageKey);
+  try {
+    const result = await persistTicketedMediaUpload({
+      localPath, storageKey, mimeType: "application/pdf",
+      binding: {
+        userId: userA, routeKey: "test.teacher-material", targetType: "teacher-material",
+        targetId: "teacher-42", maxBytes: 1024 * 1024,
+      },
+    });
+    assert.equal(result.storageKey, storageKey);
+    assert.equal(result.size, bytes.length);
+    assert.equal(result.sha256, (await import("node:crypto")).createHash("sha256").update(bytes).digest("hex"));
+    assert.equal(result.backend, "database");
+    const row = await pool.query("SELECT status, uploaded_size, uploaded_sha256 FROM media_upload_tickets WHERE storage_key=$1", [storageKey]);
+    assert.equal(row.rows[0]?.status, "consumed");
+    assert.equal(Number(row.rows[0]?.uploaded_size), bytes.length);
+    assert.equal(row.rows[0]?.uploaded_sha256, result.sha256);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("MIME spoofing is rejected before a ticket is created", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "dallyletter-media-spoof-"));
+  const localPath = path.join(dir, "spoof.png");
+  await writeFile(localPath, Buffer.from("%PDF-1.7\nnot a PNG"));
+  try {
+    await assert.rejects(persistTicketedMediaUpload({
+      localPath, storageKey: randomUUID(), mimeType: "image/png",
+      binding: {
+        userId: userA, routeKey: "test.mime", targetType: "test-object",
+        targetId: "mime-spoof", maxBytes: 1024,
+      },
+    }), /signature does not match/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("expired unconsumed tickets are swept and their orphan objects removed", async () => {
+  const orphan = await issueMediaUploadTicket({
+    userId: userB, routeKey: "test.orphan", targetType: "draft",
+    targetId: "orphan-target", mimeType: "application/pdf", maxBytes: 1024,
+  });
+  storageKeys.push(orphan.storageKey);
+  await pool.query("UPDATE media_upload_tickets SET expires_at=now()-interval '1 minute' WHERE id=$1", [orphan.ticketId]);
+  const result = await cleanupExpiredMediaUploads(50);
+  assert.ok(result.scanned >= 1);
+  const remaining = await pool.query("SELECT id FROM media_upload_tickets WHERE id=$1", [orphan.ticketId]);
+  assert.equal(remaining.rows.length, 0);
+});
