@@ -1,5 +1,6 @@
 import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import { Link } from "wouter";
 import UserProfileLink from "@/components/UserProfileLink";
 import { useListClasses, useCreateClass, useUpdateClass, useDeleteClass, useListHandRaises, getApiUrl } from "@workspace/api-client-react";
@@ -327,16 +328,7 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
       const token = localStorage.getItem("dallyletter_token");
       let mediaUrl: string | undefined;
       if (file) {
-        const body = new FormData();
-        body.append("recipientId", String(studentId));
-        body.append("file", file, file.name);
-        const upload = await fetch(getApiUrl("/api/messages/media?recipientId=" + encodeURIComponent(String(studentId))), {
-          method: "POST",
-          headers: token ? { Authorization: "Bearer " + token } : {},
-          body,
-        });
-        const result = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
-        if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error || "Attachment upload failed");
+        const result = await uploadRouteMedia<{ mediaUrl: string }>(file, token, "/api/messages/media?recipientId=" + encodeURIComponent(String(studentId)));
         mediaUrl = result.mediaUrl;
       }
       const response = await fetch(getApiUrl("/api/messages"), {
