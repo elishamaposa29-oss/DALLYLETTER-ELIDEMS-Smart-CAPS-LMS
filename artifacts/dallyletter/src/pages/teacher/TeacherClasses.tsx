@@ -330,7 +330,7 @@ function ClassHandRaises({ classId, isLive }: { classId: number, isLive: boolean
         const body = new FormData();
         body.append("recipientId", String(studentId));
         body.append("file", file, file.name);
-        const upload = await fetch(getApiUrl("/api/messages/media"), {
+        const upload = await fetch(getApiUrl("/api/messages/media?recipientId=" + encodeURIComponent(String(studentId))), {
           method: "POST",
           headers: token ? { Authorization: "Bearer " + token } : {},
           body,
