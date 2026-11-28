@@ -11,6 +11,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, persistUploadedMedia, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
+import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
 import { canReadPrivateProfileByRole, serializePublicProfile, maskPayoutDestination } from "../lib/profile-access-policy";
 import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
@@ -402,7 +403,7 @@ router.post("/users/me/avatar", requireAuth, (req, res, next): void => {
       const actor = req.currentUser!;
       try {
         const [before] = await db.select({ avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, actor.id));
-        await persistUploadedMedia(file.filename, file.mimetype, file.path);
+        await persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: actor.id, routeKey: "users.me.avatar", targetType: "user-avatar", targetId: String(actor.id), maxBytes: 8 * 1024 * 1024 } });
         const avatarUrl = "/api/lessons/media/" + file.filename + "?type=" + file.mimetype;
         const [user] = await db.update(usersTable).set({ avatarUrl }).where(eq(usersTable.id, actor.id)).returning(safeUserFields);
         if (!user) { await removeStoredMedia(file.filename); res.status(404).json({ error: "User not found" }); return; }
@@ -444,7 +445,7 @@ router.post("/users/me/cover", requireAuth, (req, res, next): void => {
         await ensureProfileCoverSchema();
         const actor = req.currentUser!;
         const prior = await pool.query("SELECT media_url FROM user_profile_covers WHERE user_id=$1", [actor.id]);
-        await persistUploadedMedia(file.filename, file.mimetype, file.path);
+        await persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: actor.id, routeKey: "users.me.cover", targetType: "user-cover", targetId: String(actor.id), maxBytes: 50 * 1024 * 1024 } });
         const mediaUrl = "/api/lessons/media/" + file.filename + "?type=" + file.mimetype;
         await pool.query("INSERT INTO user_profile_covers(user_id,media_url,media_type,updated_at) VALUES($1,$2,$3,now()) ON CONFLICT(user_id) DO UPDATE SET media_url=EXCLUDED.media_url,media_type=EXCLUDED.media_type,updated_at=now()", [actor.id, mediaUrl, file.mimetype]);
         const oldKey = typeof prior.rows[0]?.media_url === "string" ? prior.rows[0].media_url.match(/^\/api\/lessons\/media\/([a-f0-9-]{36})\?type=/i)?.[1] : null;
@@ -1078,7 +1079,7 @@ router.post("/qualifications/:id/document", requireAuth, (req,res,next):void => 
         const validPng=file.mimetype==="image/png"&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
         if(!validPdf&&!validJpeg&&!validPng){await import("node:fs/promises").then(fs=>fs.unlink(file.path).catch(()=>undefined));res.status(415).json({error:"The file content does not match a supported PDF/JPG/PNG type."});return;}
         const storageKey=createMediaStorageKey();
-        await persistUploadedMedia(storageKey,file.mimetype,file.path);
+        await persistTicketedMediaUpload({ localPath: file.path, storageKey, mimeType: file.mimetype, binding: { userId: actor.id, routeKey: "qualifications.document", targetType: "teacher-qualification", targetId: String(id), maxBytes: 10 * 1024 * 1024 } });
         const result=await pool.query("INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data,storage_key) VALUES($1,'certificate',$2,$3,$4,decode('', 'hex'),$5) RETURNING id,file_name,mime_type,size_bytes,created_at",[actor.id,file.originalname.replace(/[\\r\\n]/g,"").slice(0,255)||"qualification-document",file.mimetype,bytes.length,storageKey]);
         await pool.query("UPDATE teacher_qualifications SET document_id=$1 WHERE id=$2 AND user_id=$3",[result.rows[0].id,id,actor.id]);
         res.status(201).json({document:result.rows[0],message:"Document uploaded; qualification remains pending verification."});
