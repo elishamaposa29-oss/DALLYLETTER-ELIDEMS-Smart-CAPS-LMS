@@ -199,6 +199,8 @@ router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): P
 });
 
 router.get("/lessons/media/:storageKey", mediaAccess, async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
   const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : null;
   if (!storageKey) {
     res.status(400).json({ error: "Invalid media key" });
