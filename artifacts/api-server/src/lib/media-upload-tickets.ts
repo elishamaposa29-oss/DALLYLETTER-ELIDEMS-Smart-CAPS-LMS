@@ -1,8 +1,9 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { open, stat } from "node:fs/promises";
+import { open, readdir, stat, unlink } from "node:fs/promises";
+import path from "node:path";
 import { pool } from "@workspace/db";
-import { persistUploadedMedia, removeStoredMedia, streamStoredMedia } from "./media-storage";
+import { getMediaDirectory, persistUploadedMedia, removeStoredMedia, streamStoredMedia } from "./media-storage";
 
 const SHA256_RE = /^[a-f0-9]{64}$/i;
 const MAX_TTL_SECONDS = 900;
@@ -145,6 +146,52 @@ export async function persistTicketedMediaUpload(input:{
     else await pool.query("UPDATE media_upload_tickets SET status='expired',expires_at=now() WHERE id=$1 AND status<>'consumed'",[ticket.ticketId]).catch(()=>undefined);
     throw error;
   }
+}
+
+/**
+ * Removes abandoned API-local staging files left behind if a process exits
+ * before a ticket can be issued or after a durable copy has completed.
+ * Only UUID-named regular files older than the grace window are considered;
+ * active, unexpired tickets are never touched.
+ */
+export async function cleanupOrphanedMediaStagingFiles(
+  graceMs = 24 * 60 * 60 * 1000,
+  limit = 200,
+): Promise<{ scanned: number; deleted: number; failed: number }> {
+  const safeGrace = Math.max(0, Math.min(graceMs, 30 * 24 * 60 * 60 * 1000));
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 1000);
+  let entries: Awaited<ReturnType<typeof readdir>>;
+  try {
+    entries = await readdir(getMediaDirectory(), { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { scanned: 0, deleted: 0, failed: 0 };
+    throw error;
+  }
+  const cutoff = Date.now() - safeGrace;
+  let scanned = 0;
+  let deleted = 0;
+  let failed = 0;
+  for (const entry of entries) {
+    if (scanned >= safeLimit) break;
+    if (!entry.isFile() || !/^[a-f0-9-]{36}$/i.test(entry.name)) continue;
+    const filePath = path.join(getMediaDirectory(), entry.name);
+    let fileStats;
+    try { fileStats = await stat(filePath); } catch { continue; }
+    if (!fileStats.isFile() || fileStats.mtimeMs > cutoff) continue;
+    scanned += 1;
+    const active = await pool.query(
+      "SELECT 1 FROM media_upload_tickets WHERE storage_key=$1 AND status IN ('issued','uploaded') AND expires_at>now() LIMIT 1",
+      [entry.name],
+    );
+    if (active.rows.length) continue;
+    try {
+      await unlink(filePath);
+      deleted += 1;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") failed += 1;
+    }
+  }
+  return { scanned, deleted, failed };
 }
 
 export async function cleanupExpiredMediaUploads(limit=200):Promise<{scanned:number;deleted:number;failed:number}>{
