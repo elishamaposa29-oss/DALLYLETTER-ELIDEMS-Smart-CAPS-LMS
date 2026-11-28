@@ -121,13 +121,13 @@ async function hashResponse(response:Response):Promise<{size:number;sha256:strin
 
 export async function persistTicketedMediaUpload(input:{
   localPath:string;storageKey:string;mimeType:string;
-  binding:Omit<MediaUploadBinding,"storageKey"|"expectedSha256">;
+  binding:Omit<MediaUploadBinding,"storageKey"|"expectedSha256"|"mimeType">;
 }):Promise<{storageKey:string;size:number;sha256:string;backend:"object-storage"|"database"}>{
   const file=await stat(input.localPath);
   if(!file.isFile()||file.size<=0||file.size>input.binding.maxBytes)throw new Error("Upload size outside authorized limit");
   await verifyMimeSignature(input.localPath,input.mimeType);
   const sha256=await hashFile(input.localPath);
-  const ticket=await issueMediaUploadTicket({...input.binding,storageKey:input.storageKey,expectedSha256:sha256});
+  const ticket=await issueMediaUploadTicket({...input.binding,mimeType:input.mimeType,storageKey:input.storageKey,expectedSha256:sha256});
   try{
     const verified=await markMediaUploadVerified({ticket:ticket.ticket,userId:input.binding.userId,routeKey:input.binding.routeKey,
       targetType:input.binding.targetType,targetId:input.binding.targetId,mimeType:input.mimeType,size:file.size,sha256});
