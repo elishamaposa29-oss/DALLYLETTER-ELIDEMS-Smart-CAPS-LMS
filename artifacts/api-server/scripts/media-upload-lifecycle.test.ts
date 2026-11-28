@@ -549,7 +549,10 @@ test("direct upload ticket and completion endpoints run through real authenticat
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    Reflect.set(req, "currentUser", { id: userA, role: "teacher", isManager: false, name: "Media Test Teacher" });
+    const isOtherAccount = req.header("x-test-account") === "other";
+    Reflect.set(req, "currentUser", isOtherAccount
+      ? { id: userB, role: "student", isManager: false, name: "Other Test Account" }
+      : { id: userA, role: "teacher", isManager: false, name: "Media Test Teacher" });
     next();
   });
   app.use("/api", lessonsRouter);
@@ -586,6 +589,11 @@ test("direct upload ticket and completion endpoints run through real authenticat
     assert.equal(issued.method, "PUT");
     assert.ok(issued.uploadUrl.includes("X-Amz-Signature"));
     storageKeys.push(issued.storageKey);
+    const crossAccount = await originalFetch(`http://127.0.0.1:${address.port}/api/lessons/media/direct-upload-complete`, {
+      method: "POST", headers: { "Content-Type": "application/json", "x-test-account": "other" },
+      body: JSON.stringify({ ticket: issued.ticket, mimeType: "application/pdf" }),
+    });
+    assert.equal(crossAccount.status, 403, "another account must be rejected before ticket consumption");
     const completedResponse = await originalFetch(`http://127.0.0.1:${address.port}/api/lessons/media/direct-upload-complete`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ticket: issued.ticket, mimeType: "application/pdf" }),
@@ -595,6 +603,11 @@ test("direct upload ticket and completion endpoints run through real authenticat
     assert.equal(completed.size, bytes.length);
     assert.equal(completed.sha256, sha256);
     assert.ok(completed.mediaUrl.includes(issued.storageKey));
+    const replay = await originalFetch(`http://127.0.0.1:${address.port}/api/lessons/media/direct-upload-complete`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticket: issued.ticket, mimeType: "application/pdf" }),
+    });
+    assert.equal(replay.status, 400, "a consumed upload ticket must not be replayable");
   } finally {
     globalThis.fetch = originalFetch;
     env.forEach((key, index) => {
