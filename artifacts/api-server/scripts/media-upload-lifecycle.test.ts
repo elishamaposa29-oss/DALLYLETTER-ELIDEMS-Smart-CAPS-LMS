@@ -8,7 +8,7 @@ import messagesRouter from "../src/routes/messages";
 import usersRouter from "../src/routes/users";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, readdir, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -332,6 +332,9 @@ test("stale UUID staging files without an active ticket are removed", async () =
   const key = randomUUID();
   const filePath = path.join(getMediaDirectory(), key);
   await writeFile(filePath, Buffer.from("abandoned upload staging bytes"));
+  // Make the fixture deterministically older than the cleanup cutoff; relying
+  // on wall-clock scheduling can leave a just-created file newer than "now".
+  await utimes(filePath, new Date(0), new Date(0));
   const result = await cleanupOrphanedMediaStagingFiles(0, 50);
   assert.ok(result.scanned >= 1);
   assert.ok(result.deleted >= 1);
@@ -808,6 +811,7 @@ test("real HTTP upload route families reject unauthorized actors before multipar
   await pool.query("UPDATE users SET role='student', is_manager=false, manager_level='junior' WHERE id=$1", [userA]);
   await pool.query("UPDATE users SET role='teacher', is_manager=false, manager_level='junior' WHERE id=$1", [userB]);
   const app = express();
+  app.use(express.json());
   app.use((req, _res, next) => {
     const role = String(req.header("x-test-role") || "student");
     const id = Number(req.header("x-test-user-id") || userA);
