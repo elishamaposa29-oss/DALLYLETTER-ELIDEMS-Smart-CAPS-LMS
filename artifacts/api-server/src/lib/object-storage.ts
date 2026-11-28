@@ -46,6 +46,14 @@ export function isObjectStorageConfigured(): boolean {
   return config() !== null;
 }
 
+/**
+ * Signed object reads are opt-in until the bucket's CORS policy and private
+ * delivery behavior have been verified for every supported browser client.
+ */
+export function isPrivateObjectDeliveryEnabled(): boolean {
+  return config() !== null && process.env.MEDIA_S3_SIGNED_READS_ENABLED === "true";
+}
+
 function sha256(value: Buffer | string): string {
   return createHash("sha256").update(value).digest("hex");
 }
