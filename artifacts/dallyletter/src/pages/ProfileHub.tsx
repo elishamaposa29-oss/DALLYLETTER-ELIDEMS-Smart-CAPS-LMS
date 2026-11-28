@@ -4,6 +4,7 @@ import { useRoute } from "wouter";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { getApiUrl } from "@workspace/api-client-react";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DailyAppAttendanceCard } from "@/components/DailyAppAttendanceCard";
@@ -640,8 +641,8 @@ export default function ProfileHub() {
     if(!file)return;
     if(!["image/jpeg","image/png","image/webp"].includes(file.type)){setMessage("Choose a JPG, PNG or WebP image.");return;}
     if(file.size>8*1024*1024){setMessage("Profile photos must be 8 MB or smaller.");return;}
-    const form=new FormData();form.append("file",file);setAvatarBusy(true);setMessage("");
-    try{await request("/api/users/me/avatar",{method:"POST",body:form});const fresh=await request("/api/users/"+profileId+"/public-profile").catch(()=>null);const me= fresh ? null : await request("/api/users/"+profileId);setProfile(p=>({...p,...(fresh||{}),...(me||{}),id:profileId,display_name:(fresh?.display_name||fresh?.name||me?.name||p?.display_name),avatar:(fresh?.avatar||fresh?.avatarUrl||fresh?.avatar_url||me?.avatarUrl||p?.avatar||null),cover_url:fresh?.cover_url||fresh?.coverUrl||p?.cover_url||null,cover_type:fresh?.cover_type||fresh?.coverType||p?.cover_type||null}));setMediaRefreshKey(v=>v+1);setMessage("Profile photo saved. The refreshed account image is now shown in Profile Hub.");}
+    setAvatarBusy(true);setMessage("");
+    try{await uploadRouteMedia<any>(file,localStorage.getItem("dallyletter_token"),"/api/users/me/avatar");const fresh=await request("/api/users/"+profileId+"/public-profile").catch(()=>null);const me= fresh ? null : await request("/api/users/"+profileId);setProfile(p=>({...p,...(fresh||{}),...(me||{}),id:profileId,display_name:(fresh?.display_name||fresh?.name||me?.name||p?.display_name),avatar:(fresh?.avatar||fresh?.avatarUrl||fresh?.avatar_url||me?.avatarUrl||p?.avatar||null),cover_url:fresh?.cover_url||fresh?.coverUrl||p?.cover_url||null,cover_type:fresh?.cover_type||fresh?.coverType||p?.cover_type||null}));setMediaRefreshKey(v=>v+1);setMessage("Profile photo saved. The refreshed account image is now shown in Profile Hub.");}
     catch(e){setMessage(e instanceof Error?e.message:"Could not upload profile image.");}
     finally{setAvatarBusy(false);}
   };
@@ -650,8 +651,8 @@ export default function ProfileHub() {
     const allowed=["image/jpeg","image/png","image/webp","video/mp4","video/webm","video/quicktime"];
     if(!allowed.includes(file.type)){setMessage("Choose JPG, PNG, WebP, MP4, WebM or MOV media.");return;}
     if(file.size>20*1024*1024){setMessage("Cover media must be 20 MB or smaller on the current storage configuration.");return;}
-    const form=new FormData();form.append("file",file);setCoverBusy(true);setMessage("");
-    try{const uploaded=await request("/api/users/me/cover",{method:"POST",body:form});const fresh=await request("/api/users/"+profileId+"/public-profile").catch(()=>null);const me=fresh?null:await request("/api/users/"+profileId);setProfile(p=>({...p,...(fresh||{}),...(me||{}),id:profileId,display_name:(fresh?.display_name||fresh?.name||me?.name||p?.display_name),avatar:(fresh?.avatar||fresh?.avatarUrl||fresh?.avatar_url||me?.avatarUrl||p?.avatar||null),cover_url:(uploaded?.coverUrl||uploaded?.cover_url||fresh?.cover_url||fresh?.coverUrl||p?.cover_url||null),cover_type:(uploaded?.coverType||uploaded?.cover_type||fresh?.cover_type||fresh?.coverType||p?.cover_type||null)}));setMediaRefreshKey(v=>v+1);setMessage("Profile cover saved and displayed. Refresh the page to verify persistence.");}
+    setCoverBusy(true);setMessage("");
+    try{const uploaded=await uploadRouteMedia<any>(file,localStorage.getItem("dallyletter_token"),"/api/users/me/cover");const fresh=await request("/api/users/"+profileId+"/public-profile").catch(()=>null);const me=fresh?null:await request("/api/users/"+profileId);setProfile(p=>({...p,...(fresh||{}),...(me||{}),id:profileId,display_name:(fresh?.display_name||fresh?.name||me?.name||p?.display_name),avatar:(fresh?.avatar||fresh?.avatarUrl||fresh?.avatar_url||me?.avatarUrl||p?.avatar||null),cover_url:(uploaded?.coverUrl||uploaded?.cover_url||fresh?.cover_url||fresh?.coverUrl||p?.cover_url||null),cover_type:(uploaded?.coverType||uploaded?.cover_type||fresh?.cover_type||fresh?.coverType||p?.cover_type||null)}));setMediaRefreshKey(v=>v+1);setMessage("Profile cover saved and displayed. Refresh the page to verify persistence.");}
     catch(e){setMessage(e instanceof Error?e.message:"Could not upload profile cover.");}
     finally{setCoverBusy(false);}
   };
