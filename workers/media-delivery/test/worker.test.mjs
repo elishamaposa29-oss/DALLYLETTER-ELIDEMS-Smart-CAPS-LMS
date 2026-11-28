@@ -112,7 +112,7 @@ test("delivery benchmark measures compressed bytes, decoded bytes, cold/warm lat
   const server = createServer((request, response) => {
     const range = request.headers.range;
     if (range) {
-      const match = /^bytes=(\\d+)-(\\d+)$/.exec(range);
+      const match = /^bytes=(\d+)-(\d+)$/.exec(range);
       if (!match) {
         response.writeHead(416, { "Content-Range": "bytes */" + payload.length });
         response.end();
