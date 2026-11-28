@@ -25,7 +25,6 @@ import {
   getMediaStats,
   isAllowedMediaType,
   MAX_MEDIA_SIZE_BYTES,
-  persistUploadedMedia,
   streamStoredMedia,
   removeStoredMedia,
 } from "../lib/media-storage";
