@@ -9,7 +9,7 @@ test("media duration is non-negative and monotonic-safe", () => {
 });
 
 import { parseMediaByteRange } from "../src/lib/media-range.ts";
-import { s3CompatibleMediaProvider } from "../src/lib/object-storage.ts";
+import { s3CompatibleMediaProvider, headObject } from "../src/lib/object-storage.ts";
 
 test("parses explicit, open-ended and suffix byte ranges", () => {
   assert.deepEqual(parseMediaByteRange("bytes=10-19", 100), { start: 10, end: 19 });
@@ -58,6 +58,37 @@ test("presigned media URLs bind methods, content type and short expiries", () =>
     assert.ok(read.url.includes("X-Amz-Expires=90"));
     assert.ok(upload.expiresAt <= Math.floor(Date.now() / 1000) + 181);
   } finally {
+    env.forEach((key, index) => {
+      if (prior[index] === undefined) delete process.env[key];
+      else process.env[key] = prior[index];
+    });
+  }
+});
+
+
+test("object metadata HEAD is signed and treats missing objects as absent", async () => {
+  const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION"] as const;
+  const prior = env.map(key => process.env[key]);
+  const originalFetch = globalThis.fetch;
+  process.env.MEDIA_S3_ENDPOINT = "https://objects.example.test";
+  process.env.MEDIA_S3_BUCKET = "private-media";
+  process.env.MEDIA_S3_ACCESS_KEY_ID = "test-access";
+  process.env.MEDIA_S3_SECRET_ACCESS_KEY = "test-secret";
+  process.env.MEDIA_S3_REGION = "auto";
+  const methods: string[] = [];
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    methods.push(String(init?.method));
+    return methods.length === 1
+      ? new Response(null, { status: 200, headers: { "content-length": "1234", "content-type": "video/mp4" } })
+      : new Response(null, { status: 404 });
+  }) as typeof fetch;
+  try {
+    const found = await headObject("00000000-0000-4000-8000-000000000000");
+    assert.deepEqual(found, { size: 1234, mimeType: "video/mp4" });
+    assert.equal(await headObject("00000000-0000-4000-8000-000000000001"), null);
+    assert.deepEqual(methods, ["HEAD", "HEAD"]);
+  } finally {
+    globalThis.fetch = originalFetch;
     env.forEach((key, index) => {
       if (prior[index] === undefined) delete process.env[key];
       else process.env[key] = prior[index];
