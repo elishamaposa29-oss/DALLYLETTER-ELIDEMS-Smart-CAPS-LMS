@@ -322,8 +322,7 @@ export default function MobileProfileHub() {
     if(picked.canceled||!picked.assets?.[0])return;
     const asset=picked.assets[0];
     if(asset.size&&asset.size>10*1024*1024)throw new Error("Documents must be 10 MB or smaller.");
-    const form=new FormData();form.append("file",{uri:asset.uri,name:asset.name||"profile-document.pdf",type:asset.mimeType||"application/pdf"} as any);form.append("documentType",documentType);
-    const uploaded=await api("/api/users/me/teacher-documents",{method:"POST",body:form});
+    const uploaded=await uploadRouteMedia(asset.uri,asset.name||"profile-document.pdf",asset.mimeType||"application/pdf",token,"/api/users/me/teacher-documents",{documentType,fileName:asset.name||"profile-document.pdf"});
     let photoLinked=false;
     if(documentType==="cv"&&String(asset.mimeType||"").startsWith("image/")&&uploaded?.id){
       try{
