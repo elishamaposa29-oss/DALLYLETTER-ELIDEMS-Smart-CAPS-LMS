@@ -7,7 +7,7 @@ export async function uploadRouteMedia(
   uri: string,
   fileName: string,
   mimeType: string,
-  token: string,
+  token: string | null,
   endpoint: string,
   fields: Record<string, string> = {},
 ): Promise<any> {
