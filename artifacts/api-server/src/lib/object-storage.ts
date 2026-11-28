@@ -177,7 +177,7 @@ function presignObject(
   }
   const url = objectUrl(cfg, key);
   const now = new Date();
-  const amzDate = now.toISOString().replace(/[-:]/g, "").replace(/\\.\\d{3}Z$/, "Z");
+  const amzDate = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
   const shortDate = amzDate.slice(0, 8);
   const scope = shortDate + "/" + cfg.region + "/s3/aws4_request";
   const signedHeaders = contentType && method === "PUT" ? "content-type;host" : "host";
@@ -193,9 +193,9 @@ function presignObject(
     .map(([k, v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v))
     .join("&");
   const canonicalHeaders = contentType && method === "PUT"
-    ? "content-type:" + contentType.trim().replace(/\\s+/g, " ") + "\\nhost:" + url.host + "\\n"
+    ? "content-type:" + contentType.trim().replace(/\s+/g, " ") + "\nhost:" + url.host + "\n"
     : "host:" + url.host + "\\n";
-  const canonicalRequest = [method, url.pathname || "/", canonicalQuery, canonicalHeaders, signedHeaders, "UNSIGNED-PAYLOAD"].join("\\n");
+  const canonicalRequest = [method, url.pathname || "/", canonicalQuery, canonicalHeaders, signedHeaders, "UNSIGNED-PAYLOAD"].join("\n");
   const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("\\n");
   const kDate = hmac("AWS4" + cfg.secretAccessKey, shortDate);
   const kRegion = hmac(kDate, cfg.region);
