@@ -168,7 +168,7 @@ export async function completeDirectMediaUpload(input:{
   const stored=await streamStoredMedia(storageKey);
   if(!stored||stored.status!==200)throw new Error("Uploaded object could not be read back for verification");
   const actual=await hashResponse(stored);
-  if(actual.size!==metadata.size||(ticket.expected_sha256&&actual.sha256!==String(ticket.expected_sha256).toLowerCase())){
+  if(actual.size!==metadata.size||(ticket.expected_sha256&&actual.sha256!==String(ticket.expected_sha256).trim().toLowerCase())){
     await removeStoredMedia(storageKey).catch(()=>undefined);
     await pool.query("UPDATE media_upload_tickets SET status='rejected' WHERE token_hash=$1 AND status='issued'",[digestTicket(input.ticket)]).catch(()=>undefined);
     throw new Error("Uploaded object byte count or SHA-256 checksum does not match the authorized ticket");
