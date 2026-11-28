@@ -108,11 +108,45 @@ async function canViewPrivateConversation(user: NonNullable<Express.Request["cur
   return true;
 }
 
+/**
+ * Authorize the conversation before Multer accepts or writes any file bytes.
+ * The target is carried in the query string so authorization cannot be delayed
+ * until multipart fields happen to arrive after the file part.
+ */
+async function authorizeMessageMediaUpload(req: Express.Request, res: Express.Response, next: Express.NextFunction): Promise<void> {
+  const currentUser = req.currentUser;
+  if (!currentUser) { res.status(401).json({ error: "Authentication required" }); return; }
+  const groupRaw = req.query.groupId;
+  const recipientRaw = req.query.recipientId;
+  const groupId = groupRaw == null || groupRaw === "" ? null : Number(groupRaw);
+  const recipientId = recipientRaw == null || recipientRaw === "" ? null : Number(recipientRaw);
+  const validTarget = (groupId != null && recipientId == null && Number.isSafeInteger(groupId) && groupId > 0)
+    || (groupId == null && recipientId != null && Number.isSafeInteger(recipientId) && recipientId > 0);
+  if (!validTarget) { res.status(400).json({ error: "Provide exactly one valid groupId or recipientId query parameter." }); return; }
+  if (isProfileOnlyTeacher(currentUser) && groupId != null) {
+    res.status(403).json({ error: "Applicants may use private Profile Hub conversations only; group chat unlocks after teacher authorization." });
+    return;
+  }
+  const allowed = groupId != null
+    ? await canAccessGroup(groupId, currentUser.id, currentUser.role)
+    : await canMessageUser(currentUser, recipientId!);
+  if (!allowed) { res.status(403).json({ error: "You cannot upload media to this conversation" }); return; }
+  if (groupId != null) {
+    const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
+    const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
+    if (settings?.allowMedia === false || control?.mediaBlocked || control?.blocked || control?.suspended || control?.muted) {
+      res.status(403).json({ error: "Media uploads are disabled for you in this group" });
+      return;
+    }
+  }
+  next();
+}
+
 function messageMediaPath(storageKey: string): string {
   return `/api/messages/media/${storageKey}`;
 }
 
-router.post("/messages/media", requireAuth, (req, res): void => {
+router.post("/messages/media", requireAuth, (req, res, next): void => {\n  void authorizeMessageMediaUpload(req, res, next).catch(next);\n});\n\nrouter.post("/messages/media", requireAuth, (req, res, next): void => {\n  authorizeMessageMediaUpload(req, res, (error?: unknown) => {\n    if (error) { next(error); return; }\n    uploadMessageMedia(req, res, next);\n  });\n});\n\nfunction uploadMessageMedia(req: Express.Request, res: Express.Response, next: Express.NextFunction): void {
   voiceUpload.single("file")(req, res, (error) => {
     void (async () => {
       if (error || !req.file) {
