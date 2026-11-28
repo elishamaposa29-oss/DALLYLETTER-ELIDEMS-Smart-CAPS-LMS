@@ -194,6 +194,76 @@ export async function cleanupOrphanedMediaStagingFiles(
   return { scanned, deleted, failed };
 }
 
+type ConsumedMediaTicket = { id: string; storage_key: string; route_key: string; target_type: string; target_id: string };
+
+async function isTicketedMediaReferenced(ticket: ConsumedMediaTicket): Promise<boolean> {
+  const key = `%${ticket.storage_key}%`;
+  switch (ticket.route_key) {
+    case "lessons.media":
+      if (ticket.target_type === "study-group-cover") {
+        const result = await pool.query("SELECT 1 FROM public.study_groups WHERE id=$1 AND cover_image_url LIKE $2 LIMIT 1", [Number(ticket.target_id), key]);
+        return result.rows.length > 0;
+      }
+      return (await pool.query("SELECT 1 FROM public.lessons WHERE media_url LIKE $1 OR content LIKE $1 LIMIT 1", [key])).rows.length > 0;
+    case "assignments.material":
+      return (await pool.query("SELECT 1 FROM public.assignments WHERE attachment_url LIKE $1 LIMIT 1", [key])).rows.length > 0;
+    case "assignments.submission-material":
+      return (await pool.query("SELECT 1 FROM public.assignment_submissions WHERE file_url LIKE $1 OR content LIKE $1 LIMIT 1", [key])).rows.length > 0;
+    case "exercises.question-media":
+      return (await pool.query("SELECT 1 FROM public.exercise_questions WHERE config::text LIKE $1 LIMIT 1", [key])).rows.length > 0;
+    case "exercises.answer-media":
+      return (await pool.query("SELECT 1 FROM public.exercise_answers WHERE media_reference LIKE $1 OR draw_data::text LIKE $1 LIMIT 1", [key])).rows.length > 0;
+    case "handRaises.raise-hand.with-media":
+      return (await pool.query("SELECT 1 FROM public.hand_raises WHERE media_url LIKE $1 LIMIT 1", [key])).rows.length > 0;
+    case "messages.media":
+      return (await pool.query("SELECT 1 FROM public.messages WHERE media_url LIKE $1 LIMIT 1", [key])).rows.length > 0;
+    case "users.me.avatar":
+      return (await pool.query("SELECT 1 FROM public.users WHERE avatar_url LIKE $1 LIMIT 1", [key])).rows.length > 0;
+    case "users.me.cover": {
+      const exists = await pool.query("SELECT to_regclass('public.user_profile_covers') AS table_name");
+      if (!exists.rows[0]?.table_name) return false;
+      return (await pool.query("SELECT 1 FROM public.user_profile_covers WHERE media_url LIKE $1 LIMIT 1", [key])).rows.length > 0;
+    }
+    case "users.me.teacher-documents":
+    case "qualifications.document":
+      return (await pool.query("SELECT 1 FROM public.teacher_documents WHERE storage_key=$1 LIMIT 1", [ticket.storage_key])).rows.length > 0;
+    default:
+      // Unknown route bindings are retained rather than risking deletion of a
+      // resource this cleanup worker does not understand.
+      return true;
+  }
+}
+
+/**
+ * Consumed uploads may be intentionally staged by offline drafts. Retain them
+ * for 90 days; after that, delete only objects that have no live database
+ * reference. Ticket rows remain as rejected audit records after cleanup.
+ */
+export async function cleanupUnreferencedConsumedMedia(
+  limit = 200,
+  retentionDays = 90,
+): Promise<{ scanned: number; deleted: number; failed: number }> {
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 1000);
+  const safeRetention = Math.min(Math.max(Math.floor(retentionDays), 30), 365);
+  const candidates = await pool.query(
+    "SELECT id, storage_key, route_key, target_type, target_id FROM public.media_upload_tickets WHERE status='consumed' AND consumed_at < now() - ($2::text || ' days')::interval ORDER BY consumed_at ASC LIMIT $1",
+    [safeLimit, String(safeRetention)],
+  );
+  let deleted = 0;
+  let failed = 0;
+  for (const ticket of candidates.rows as ConsumedMediaTicket[]) {
+    try {
+      if (await isTicketedMediaReferenced(ticket)) continue;
+      await removeStoredMedia(ticket.storage_key);
+      await pool.query("UPDATE public.media_upload_tickets SET status='rejected' WHERE id=$1 AND status='consumed'", [ticket.id]);
+      deleted += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { scanned: candidates.rows.length, deleted, failed };
+}
+
 export async function cleanupExpiredMediaUploads(limit=200):Promise<{scanned:number;deleted:number;failed:number}>{
   const n=Math.min(Math.max(Math.floor(limit),1),1000);
   await pool.query("UPDATE media_upload_tickets SET status='expired' WHERE status IN ('issued','uploaded') AND expires_at<=now()");
@@ -203,10 +273,13 @@ export async function cleanupExpiredMediaUploads(limit=200):Promise<{scanned:num
     try{await removeStoredMedia(String(row.storage_key));await pool.query("DELETE FROM media_upload_tickets WHERE id=$1 AND status='expired'",[row.id]);deleted++;}
     catch{failed++;}
   }
-  const staging = await cleanupOrphanedMediaStagingFiles(24 * 60 * 60 * 1000, n);
+  const [staging, unreferenced] = await Promise.all([
+    cleanupOrphanedMediaStagingFiles(24 * 60 * 60 * 1000, n),
+    cleanupUnreferencedConsumedMedia(n, 90),
+  ]);
   return {
-    scanned: r.rows.length + staging.scanned,
-    deleted: deleted + staging.deleted,
-    failed: failed + staging.failed,
+    scanned: r.rows.length + staging.scanned + unreferenced.scanned,
+    deleted: deleted + staging.deleted + unreferenced.deleted,
+    failed: failed + staging.failed + unreferenced.failed,
   };
 }
