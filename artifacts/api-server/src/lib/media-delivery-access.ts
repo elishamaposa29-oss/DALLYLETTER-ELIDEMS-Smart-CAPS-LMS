@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
-import { canAccessManager, canModerateUser, isOwnerRole, normalizeRole } from "./role-access";
+import { canAccessManager, canModerateUser, isOwnerRole, isSeniorManager, normalizeRole } from "./role-access";
+import { managerHasPermission } from "./manager-permission-policy";
 import { canViewProfileSection } from "../routes/profileConnections";
 
 type MediaPrincipal = NonNullable<Express.Request["currentUser"]>;
@@ -61,27 +62,38 @@ export async function authorizeTicketedMediaDelivery(storageKey: string, actor: 
     }
     case "assignments.submission-material": {
       const submission = await pool.query(
-        "SELECT s.student_id, a.teacher_id FROM public.assignment_submissions s JOIN public.assignments a ON a.id=s.assignment_id WHERE (s.file_url LIKE $1 OR s.content LIKE $1) LIMIT 1",
+        "SELECT s.student_id, a.teacher_id, u.role AS teacher_role, u.is_manager AS teacher_is_manager, u.manager_level AS teacher_manager_level FROM public.assignment_submissions s JOIN public.assignments a ON a.id=s.assignment_id LEFT JOIN public.users u ON u.id=a.teacher_id WHERE (s.file_url LIKE $1 OR s.content LIKE $1) LIMIT 1",
         [key],
       );
       const row = submission.rows[0];
-      return Boolean(row && (Number(row.student_id) === Number(actor.id) || Number(row.teacher_id) === Number(actor.id)));
+      if (!row) return false;
+      if (Number(row.student_id) === Number(actor.id) || Number(row.teacher_id) === Number(actor.id)) return true;
+      return canAccessManager(actor) && await managerHasPermission(actor, "recordbook.view")
+        && canModerateUser(actor, { role: row.teacher_role, isManager: row.teacher_is_manager, managerLevel: row.teacher_manager_level });
     }
     case "exercises.question-media": {
       const question = await pool.query(
-        "SELECT e.created_by, e.status FROM public.exercise_questions q JOIN public.exercises e ON e.id=q.exercise_id WHERE q.config::text LIKE $1 LIMIT 1",
+        "SELECT e.created_by, e.status, e.grade, u.role AS creator_role, u.is_manager AS creator_is_manager, u.manager_level AS creator_manager_level FROM public.exercise_questions q JOIN public.exercises e ON e.id=q.exercise_id LEFT JOIN public.users u ON u.id=e.created_by WHERE q.config::text LIKE $1 LIMIT 1",
         [key],
       );
       const row = question.rows[0];
-      return Boolean(row && (Number(row.created_by) === Number(actor.id) || (["student", "learner", "prefect"].includes(role) && row.status === "published")));
+      if (!row) return false;
+      if (Number(row.created_by) === Number(actor.id)) return true;
+      if (canAccessManager(actor) && await managerHasPermission(actor, "users.override.teacher")
+        && canModerateUser(actor, { role: row.creator_role, isManager: row.creator_is_manager, managerLevel: row.creator_manager_level })) return true;
+      return ["student", "learner", "prefect"].includes(role) && row.status === "published"
+        && (grade == null || row.grade == null || String(row.grade).trim().toLowerCase() === grade.trim().toLowerCase());
     }
     case "exercises.answer-media": {
       const answer = await pool.query(
-        "SELECT s.learner_id, e.created_by FROM public.exercise_answers a JOIN public.exercise_submissions s ON s.id=a.submission_id JOIN public.exercises e ON e.id=s.exercise_id WHERE (a.media_reference LIKE $1 OR a.draw_data::text LIKE $1) LIMIT 1",
+        "SELECT s.learner_id, e.created_by, u.role AS creator_role, u.is_manager AS creator_is_manager, u.manager_level AS creator_manager_level FROM public.exercise_answers a JOIN public.exercise_submissions s ON s.id=a.submission_id JOIN public.exercises e ON e.id=s.exercise_id LEFT JOIN public.users u ON u.id=e.created_by WHERE (a.media_reference LIKE $1 OR a.draw_data::text LIKE $1) LIMIT 1",
         [key],
       );
       const row = answer.rows[0];
-      return Boolean(row && (Number(row.learner_id) === Number(actor.id) || Number(row.created_by) === Number(actor.id)));
+      if (!row) return false;
+      if (Number(row.learner_id) === Number(actor.id) || Number(row.created_by) === Number(actor.id)) return true;
+      return canAccessManager(actor) && await managerHasPermission(actor, "recordbook.view")
+        && canModerateUser(actor, { role: row.creator_role, isManager: row.creator_is_manager, managerLevel: row.creator_manager_level });
     }
     case "handRaises.raise-hand.with-media": {
       const handRaise = await pool.query(
@@ -89,7 +101,7 @@ export async function authorizeTicketedMediaDelivery(storageKey: string, actor: 
         [key],
       );
       const row = handRaise.rows[0];
-      return Boolean(row && (Number(row.student_id) === Number(actor.id) || Number(row.teacher_id) === Number(actor.id)));
+      return Boolean(row && (Number(row.student_id) === Number(actor.id) || Number(row.teacher_id) === Number(actor.id) || isSeniorManager(actor)));
     }
     case "users.me.avatar":
     case "users.me.cover": {
