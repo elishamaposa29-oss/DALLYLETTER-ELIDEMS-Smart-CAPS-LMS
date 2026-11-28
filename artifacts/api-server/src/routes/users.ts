@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import crypto from "node:crypto";
 import { readFile, writeFile, unlink } from "node:fs/promises";
 import os from "node:os";
@@ -1086,7 +1086,20 @@ const qualificationUpload = multer({
   fileFilter: (_req,file,callback) => callback(null,["application/pdf","image/jpeg","image/png"].includes(file.mimetype)),
 });
 
-router.post("/qualifications/:id/document", requireAuth, (req,res,next):void => {
+const authorizeQualificationDocumentUpload = (req: Request, res: Response, next: NextFunction): void => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid qualification id." }); return; }
+  void pool.query("SELECT user_id FROM teacher_qualifications WHERE id=$1", [id]).then(result => {
+    if (!result.rows.length) { res.status(404).json({ error: "Qualification not found." }); return; }
+    if (Number(result.rows[0].user_id) !== req.currentUser!.id) {
+      res.status(403).json({ error: "Upload qualification evidence from the qualification owner's account." });
+      return;
+    }
+    next();
+  }).catch(next);
+};
+
+router.post("/qualifications/:id/document", requireAuth, authorizeQualificationDocumentUpload, (req,res,next):void => {
   qualificationUpload.single("file")(req,res,error=>{
     void (async()=>{
       if(error instanceof multer.MulterError){res.status(400).json({error:"Choose a PDF, JPG, or PNG file up to 10 MB."});return;}
