@@ -62,7 +62,7 @@
 1. Cloudflare R2 is not enabled on the connected account; Cloudflare instructs enabling it in the Dashboard.
 2. Render's canonical-looking `-4` API service is suspended for monthly quota exhaustion, so live service validation/deployment is currently blocked.
 3. The two Render recovery PostgreSQL instances visible to the workspace are suspended; one is past its listed expiry. The actual canonical production database must be positively identified before any database-cost migration.
-4. Existing media adapter proxies reads through Render, so R2 configuration alone is insufficient to meet the bandwidth objective. A secure delivery edge/direct upload design is required.
+4. The API now supports route-authorized, short-lived private Worker redirects and direct object PUT for selected lesson/group media flows. Other upload routes still use API staging, and the edge cannot reduce production egress until R2/Worker are provisioned and enabled.
 
 
 ## D. Public edge caching, offline assets and compression
@@ -71,7 +71,7 @@
 - Vercel's static delivery edge negotiates Brotli/Gzip where supported. Verify `Content-Encoding` and transferred bytes for JS, CSS and HTML on the live deployment; do not pre-compress user uploads or authenticated media.
 - The service worker caches only same-origin, successful, bounded static assets. It refuses private/no-store/no-cache responses, Range requests, API, media, uploads and auth paths. The asset cache has count and byte ceilings; quota failures remain non-fatal.
 - Cache budgets are deliberately small for low-storage Android devices. Cache Storage is opportunistic, not durable offline storage for learner records or submissions. Those continue to use their dedicated offline queue and synchronization contracts.
-- Measure with a repeatable before/after profile: cold and warm page load, bytes transferred, cache hit/miss, `Content-Encoding`, media Range response bytes, API egress and Render monthly transfer. Record device/network profile and avoid claiming savings until measured.
+- The CI media benchmark now records cold-request/warm-repeat full and Range downloads, encoded/decoded bytes, compression ratio, TTFB, median/p95 latency, cache headers and client-visible egress. Its tiny PostgreSQL fixture validates instrumentation, not real-world savings. Measure real static assets and R2 delivery with provider cache/transfer metrics after activation; record device/network profile and avoid claiming savings until then.
 
 
 ## E. Provider-independent media implementation and route inventory (2026-11-28)
@@ -96,8 +96,8 @@
 - Service-worker navigation caching now stores only the public root document and refuses `private`, `no-store`, or `no-cache` responses. Authenticated SPA routes are never stored under the shared root cache key. Asset caching remains same-origin, bounded and excludes API/media/auth paths and Range requests.
 
 ### Verification still required
-- Automated unit tests are wired for the telemetry helper; run `pnpm --dir artifacts/api-server run test:media-telemetry` and full API typecheck/CI on this branch.
-- Add integration tests with a disposable PostgreSQL instance for chunk boundaries, malformed/unsatisfiable/suffix/open-ended ranges, missing chunks, empty objects, integrity, fallback, deletion and authorization on each route family.
+- Media telemetry tests, the 18-case PostgreSQL-backed upload lifecycle/HTTP suite, and five private Worker tests now pass in CI/Release Safety on the latest verified code head.
+- Continue extending real HTTP lifecycle coverage across the remaining assignment/submission, exercise, hand-raise, chat, profile and teacher-document routes; current source-policy checks are not a substitute for full positive/negative route lifecycle tests.
 - Provider contract integration tests need a disposable S3-compatible endpoint; verify streamed PUT, GET/Range, 404, delete and checksum. No production credentials are needed for these tests.
 - Audit the exact legacy document/media route handlers and Android attachment consumers before claiming the inventory is exhaustive; the route inventory above covers the shared storage key paths found by source search.
 
@@ -117,7 +117,7 @@ The current API media-storage adapter is shared by these upload/download surface
 | Teacher documents | `routes/users.ts` | Profile/teacher-document download handler | Role-restricted document access; private/no-store |
 | Mobile offline media | `artifacts/dallyletter-mobile/components/OfflineMediaDownload.tsx` | Authenticated lesson media URL | Client downloads through API; offline file storage is distinct from service-worker cache |
 
-**Important gaps / follow-up:** this is a source-code route inventory, not proof that every feature's lifecycle works end-to-end. The shared adapter supports S3-compatible object storage and PostgreSQL chunks. A one-time direct-to-object-store ticket/PUT/verify/consume/abort flow has now been added for lesson media and study-group covers, and the web teacher lesson, teacher/admin poll-image, study-group-cover and Android teacher-lesson upload callers use it with the existing multipart path as a compatibility fallback. Other route families still use API-local staging and need their own route-bound direct-upload integration before claiming full coverage. Message media uses its own route and separate conversation-membership authorization; profile and teacher documents remain private. External video URLs are not owned by this storage adapter.
+**Important gaps / follow-up:** this is a source-code route inventory with HTTP verification for the shared lesson-media flow, not proof that every feature's lifecycle works end-to-end. The shared adapter supports S3-compatible object storage and PostgreSQL chunks. A one-time direct-to-object-store ticket/PUT/verify/consume/abort flow has now been added for lesson media and study-group covers, and the web teacher lesson, teacher/admin poll-image, study-group-cover and Android teacher-lesson upload callers use it with the existing multipart path as a compatibility fallback. Other route families still use API-local staging and need their own route-bound direct-upload integration before claiming full coverage. Message media uses its own route and separate conversation-membership authorization; profile and teacher documents remain private. External video URLs are not owned by this storage adapter.
 
 **Cache policy:** public immutable build assets may use long-lived edge caching; user-generated media, assignment submissions, message/voice attachments, avatars/covers, hand-raise evidence and teacher documents remain private/no-store at the API boundary. The service worker intentionally excludes all API/media URLs and Range requests; this avoids stale or cross-account private data but means media is not automatically available offline unless the explicit mobile/web offline-download workflow saves it.
 
