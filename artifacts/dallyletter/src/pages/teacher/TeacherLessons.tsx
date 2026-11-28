@@ -21,6 +21,7 @@ import { z } from "zod";
 import { CreateLessonBodyType } from "@workspace/api-client-react";
 import { ExerciseBuilderPanel } from "@/components/exercises/ExerciseBuilderPanel";
 import { RichTextEditor, sanitizeRichText } from "@/components/RichTextEditor";
+import { uploadLessonMedia } from "@/lib/mediaUpload";
 
 const createLessonSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -152,7 +153,7 @@ export default function TeacherLessons() {
 
   const hasApprovedPermission = (lessonId: number, action: string) => myPermissionRequests.some((request:any) => Number(request.content_id ?? request.contentId) === lessonId && String(request.content_type ?? request.contentType ?? "lesson") === "lesson" && String(request.requested_action ?? request.requestedAction) === action && String(request.status).toLowerCase() === "approved");
 
-  const handleMediaUpload = (file: File) => {
+  const handleMediaUpload = async (file: File) => {
     const isDocument = selectedLessonType === "notes" && ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(file.type);
     const expectedPrefix = selectedLessonType === "audio" ? "audio/" : selectedLessonType === "image" ? "image/" : "video/";
     if (!file.type.startsWith(expectedPrefix) && !isDocument) {
@@ -162,31 +163,16 @@ export default function TeacherLessons() {
     const previewUrl = URL.createObjectURL(file);
     setUploadedFile({ name: file.name, previewUrl, mimeType: file.type });
     setUploadProgress(0);
-    const request = new XMLHttpRequest();
-    request.open("POST", getApiUrl("/api/lessons/media"));
-    const token = localStorage.getItem("dallyletter_token");
-    if (token) request.setRequestHeader("Authorization", `Bearer ${token}`);
-    request.upload.onprogress = (event) => {
-      if (event.lengthComputable) setUploadProgress(Math.round((event.loaded / event.total) * 100));
-    };
-    request.onload = () => {
-      if (request.status < 200 || request.status >= 300) {
-        setUploadProgress(null);
-        toast({ variant: "destructive", title: "Upload failed", description: "The video could not be uploaded." });
-        return;
-      }
-      const result = JSON.parse(request.responseText) as { mediaUrl: string };
+    try {
+      const token = localStorage.getItem("dallyletter_token");
+      const result = await uploadLessonMedia(file, token, { onProgress: setUploadProgress });
       form.setValue("mediaUrl", result.mediaUrl, { shouldValidate: true });
       setUploadProgress(100);
       toast({ title: "Video uploaded", description: "Preview it below, then publish the lesson." });
-    };
-    request.onerror = () => {
+    } catch (error) {
       setUploadProgress(null);
-      toast({ variant: "destructive", title: "Upload failed", description: "Check your connection and try again." });
-    };
-    const formData = new FormData();
-    formData.append("file", file);
-    request.send(formData);
+      toast({ variant: "destructive", title: "Upload failed", description: error instanceof Error ? error.message : "Check your connection and try again." });
+    }
   };
 
   const removeUploadedVideo = () => {
