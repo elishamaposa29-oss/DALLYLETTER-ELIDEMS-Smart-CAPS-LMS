@@ -1,6 +1,8 @@
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import { pool } from "@workspace/db";
-import { removeStoredMedia } from "./media-storage";
+import { persistUploadedMedia, removeStoredMedia, streamStoredMedia } from "./media-storage";
 
 export type MediaUploadBinding = {
   userId: number;
@@ -44,7 +46,7 @@ export async function issueMediaUploadTicket(binding: MediaUploadBinding): Promi
   const ttl = Math.min(Math.max(Math.floor(binding.ttlSeconds ?? 300), 30), MAX_TTL_SECONDS);
   const ticket = randomBytes(32).toString("base64url");
   const ticketId = randomUUID();
-  const storageKey = randomUUID();
+  const storageKey = binding.storageKey ?? randomUUID();
   const expiresAt = new Date(Date.now() + ttl * 1000);
   await pool.query(
     `INSERT INTO media_upload_tickets
@@ -161,4 +163,89 @@ export async function cleanupExpiredMediaUploads(limit = 200): Promise<{ scanned
     }
   }
   return { scanned: candidates.rows.length, deleted, failed };
+}
+
+
+async function sha256File(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+async function sha256Response(response: Response): Promise<{ size: number; sha256: string }> {
+  if (!response.body) throw new Error("Stored media returned no body");
+  const hash = createHash("sha256");
+  const reader = response.body.getReader();
+  let size = 0;
+  try {
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      size += part.value.byteLength;
+      hash.update(part.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return { size, sha256: hash.digest("hex") };
+}
+
+/**
+ * Route handlers call this only after their own role/record authorization has
+ * succeeded. The persisted ticket binds that exact actor, route and target.
+ * Bytes are hashed before storage and read back before the ticket is consumed.
+ */
+export async function persistTicketedMediaUpload(input: {
+  localPath: string;
+  storageKey: string;
+  mimeType: string;
+  binding: Omit<MediaUploadBinding, "storageKey" | "expectedSha256">;
+}): Promise<{ storageKey: string; size: number; sha256: string; backend: "object-storage" | "database" }> {
+  const file = await stat(input.localPath);
+  if (!file.isFile() || file.size <= 0 || file.size > input.binding.maxBytes) {
+    throw new Error("Uploaded media size is outside the authorized limit");
+  }
+  const sha256 = await sha256File(input.localPath);
+  const issued = await issueMediaUploadTicket({
+    ...input.binding,
+    storageKey: input.storageKey,
+    expectedSha256: sha256,
+  });
+  let stored = false;
+  try {
+    const verified = await markMediaUploadVerified({
+      ticket: issued.ticket,
+      userId: input.binding.userId,
+      routeKey: input.binding.routeKey,
+      targetType: input.binding.targetType,
+      targetId: input.binding.targetId,
+      mimeType: input.mimeType,
+      size: file.size,
+      sha256,
+    });
+    const backend = await persistUploadedMedia(verified.storageKey, input.mimeType, input.localPath);
+    stored = true;
+    const readback = await streamStoredMedia(verified.storageKey);
+    if (!readback || readback.status !== 200) throw new Error("Stored media read-back verification failed");
+    const actual = await sha256Response(readback);
+    if (actual.size !== file.size || actual.sha256 !== sha256) {
+      throw new Error("Stored media size or SHA-256 does not match the uploaded file");
+    }
+    await consumeMediaUploadTicket({
+      ticket: issued.ticket,
+      userId: input.binding.userId,
+      routeKey: input.binding.routeKey,
+      targetType: input.binding.targetType,
+      targetId: input.binding.targetId,
+      mimeType: input.mimeType,
+    });
+    return { storageKey: verified.storageKey, size: actual.size, sha256: actual.sha256, backend };
+  } catch (error) {
+    if (stored) await removeStoredMedia(input.storageKey).catch(() => undefined);
+    await pool.query(
+      "UPDATE media_upload_tickets SET status = 'rejected' WHERE id = $1 AND status <> 'consumed'",
+      [issued.ticketId],
+    ).catch(() => undefined);
+    throw error;
+  }
 }
