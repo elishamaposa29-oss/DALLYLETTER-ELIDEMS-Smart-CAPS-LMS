@@ -97,7 +97,7 @@ export default function TeacherChat() {
     if (selectedGroupId) body.append("groupId", String(selectedGroupId));
     if (selectedUserId) body.append("recipientId", String(selectedUserId));
     body.append("file", file, file.name);
-    const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: localStorage.getItem("dallyletter_token") ? { Authorization: `Bearer ${localStorage.getItem("dallyletter_token")}` } : undefined, body });
+    const upload = await fetch(getApiUrl("/api/messages/media?" + (selectedGroupId ? "groupId=" + encodeURIComponent(String(selectedGroupId)) : "recipientId=" + encodeURIComponent(String(selectedUserId)))), { method: "POST", headers: localStorage.getItem("dallyletter_token") ? { Authorization: `Bearer ${localStorage.getItem("dallyletter_token")}` } : undefined, body });
     const result = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
     if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error ?? "Attachment upload failed.");
     await sendMessageMutation.mutateAsync({ data: { content: file.name, type: "media" as SendMessageBodyType, groupId: selectedGroupId, recipientId: selectedUserId, mediaUrl: result.mediaUrl } });
@@ -111,7 +111,7 @@ export default function TeacherChat() {
     if (selectedUserId) body.append("recipientId", String(selectedUserId));
     body.append("file", audio, "voice-message.webm");
     const token = localStorage.getItem("dallyletter_token");
-    const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body });
+    const upload = await fetch(getApiUrl("/api/messages/media?" + (selectedGroupId ? "groupId=" + encodeURIComponent(String(selectedGroupId)) : "recipientId=" + encodeURIComponent(String(selectedUserId)))), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body });
     if (!upload.ok) {
       const result = await upload.json().catch(() => null) as { error?: string } | null;
       throw new Error(result?.error ?? "Voice upload failed.");

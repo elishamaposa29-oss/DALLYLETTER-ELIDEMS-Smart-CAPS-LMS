@@ -16,7 +16,10 @@
     "start:api": "pnpm run start",
     "backfill:enrollments": "node ./scripts/backfill-enrollments.mjs",
     "test:ai-provider": "node ./scripts/test-ai-provider-http.mjs && node ./scripts/test-ai-provider-model.mjs",
-    "test:teacher-cv-workflow": "node ./scripts/test-teacher-cv-workflow.mjs"
+    "test:teacher-cv-workflow": "node ./scripts/test-teacher-cv-workflow.mjs",
+    "test:media-telemetry": "node ./scripts/test-media-telemetry.mjs",
+    "test:media-storage": "node ./scripts/test-media-telemetry.mjs",
+    "test:media-upload-lifecycle": "node ./scripts/test-media-upload-lifecycle.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

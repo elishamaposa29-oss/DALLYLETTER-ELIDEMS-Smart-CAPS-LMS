@@ -12,7 +12,8 @@ import { managerHasPermission, requireManagerPermissionIfManager } from "../lib/
 import { getAIProvider } from "../lib/ai-provider";
 import { hasContentPermission } from "../lib/content-permissions";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
 const learnerRole = "student";
@@ -48,7 +49,7 @@ router.post("/answer-media", requireAuth, (req,res):void => {
     if (error) { res.status(400).json({error:"A supported answer file is required"}); return; }
     if (!req.file) { res.status(400).json({error:"A supported answer file is required"}); return; }
     const file = req.file;
-    void persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+    void persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: req.currentUser!.id, routeKey: "exercises.answer-media", targetType: "learner-answer-media-draft", targetId: String(req.currentUser!.id), maxBytes: MAX_MEDIA_SIZE_BYTES } }).then(() => {
       if (res.headersSent) return;
       res.status(201).json({
         mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
@@ -110,7 +111,7 @@ router.post("/question-media", requireAuth, requireManagerPermissionIfManager("u
       const attachmentUrl = `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`;
       let mediaPersisted = false;
       try {
-        await persistUploadedMedia(file.filename, file.mimetype, file.path);
+        await persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: user.id, routeKey: "exercises.question-media", targetType: "exercise-question", targetId: `${exerciseId}:${questionId}`, maxBytes: MAX_MEDIA_SIZE_BYTES } });
         mediaPersisted = true;
         const [updatedQuestion] = await db.update(exerciseQuestionsTable)
           .set({ config: { ...config, attachment: { url: attachmentUrl, fileName: file.originalname, mimeType: file.mimetype, size: file.size } } })

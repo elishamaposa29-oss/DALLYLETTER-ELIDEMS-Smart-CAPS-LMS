@@ -25,12 +25,13 @@ import {
   getMediaStats,
   isAllowedMediaType,
   MAX_MEDIA_SIZE_BYTES,
-  persistUploadedMedia,
   streamStoredMedia,
   removeStoredMedia,
 } from "../lib/media-storage";
 import { hasContentPermission } from "../lib/content-permissions";
 import { isObjectStorageConfigured } from "../lib/object-storage";
+import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { authorizeTicketedMediaDelivery } from "../lib/media-delivery-access";
 import { logger } from "../lib/logger";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
 
@@ -55,7 +56,18 @@ function validMediaShare(storageKey: string, token: unknown): boolean {
 }
 const mediaAccess = (req: Request, res: Response, next: NextFunction) => {
   if (validMediaShare(String(req.params.storageKey || ""), req.query.shareToken)) { next(); return; }
-  requireAuth(req, res, next);
+  requireAuth(req, res, () => {
+    const actor = req.currentUser;
+    if (!actor) return;
+    const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : "";
+    void authorizeTicketedMediaDelivery(storageKey, actor).then(allowed => {
+      if (!allowed) {
+        res.status(403).json({ error: "You are not authorized to access this media." });
+        return;
+      }
+      next();
+    }).catch(next);
+  });
 };
 
 
@@ -155,7 +167,7 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
       return;
     }
 
-    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+    persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: req.currentUser!.id, routeKey: "lessons.media", targetType: Number(req.query.groupId) > 0 ? "study-group-cover" : "lesson-media-library", targetId: String(Number(req.query.groupId) > 0 ? Number(req.query.groupId) : req.currentUser!.id), maxBytes: MAX_MEDIA_SIZE_BYTES } }).then(() => {
       res.status(201).json({
         mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
         storageKey: file.filename,
@@ -180,12 +192,28 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
 router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): Promise<void> => {
   const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : "";
   if (!/^[a-f0-9-]{36}$/i.test(storageKey)) { res.status(400).json({ error: "Invalid media key" }); return; }
+  // Share links are an explicit public-access escape hatch. Never issue one
+  // for private submissions, chat attachments, profile media, teacher records,
+  // group covers, or any other ticketed object type.
+  const owner = await pool.query(
+    "SELECT user_id, route_key, target_type FROM media_upload_tickets WHERE storage_key = $1 AND status = 'consumed' ORDER BY consumed_at DESC LIMIT 1",
+    [storageKey],
+  );
+  const ticket = owner.rows[0] as { user_id: number; route_key: string; target_type: string } | undefined;
+  if (!ticket || ticket.route_key !== "lessons.media" || ticket.target_type !== "lesson-media-library") {
+    res.status(403).json({ error: "This media type cannot be shared publicly." });
+    return;
+  }
+  if (Number(ticket.user_id) !== Number(req.currentUser!.id) && !isOwnerRole(req.currentUser!.role)) {
+    res.status(403).json({ error: "Only the media uploader or platform owner can create a share link" });
+    return;
+  }
   try {
     const stored = await streamStoredMedia(storageKey);
     if (!stored) {
       try { await getMediaStats(storageKey); } catch { res.status(404).json({ error: "Media not found" }); return; }
     }
-    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30;
+    const expiresAt = Math.floor(Date.now() / 1000) + 15 * 60;
     res.setHeader("Cache-Control", "no-store");
     res.json({ shareToken: signMediaShare(storageKey, expiresAt), expiresAt });
   } catch (error) {
@@ -194,6 +222,8 @@ router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): P
 });
 
 router.get("/lessons/media/:storageKey", mediaAccess, async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
   const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : null;
   if (!storageKey) {
     res.status(400).json({ error: "Invalid media key" });

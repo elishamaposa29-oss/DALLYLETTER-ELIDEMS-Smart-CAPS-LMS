@@ -4,6 +4,8 @@ import { mkdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { deleteObject, getObject, isObjectStorageConfigured, putObject } from "./object-storage";
+import { emitMediaMetric, mediaDurationSince } from "./media-telemetry";
+import { parseMediaByteRange } from "./media-range";
 
 // Free-plan durable fallback: store small uploads in PostgreSQL in bounded chunks.
 // Larger video uploads require configured S3-compatible object storage.
@@ -71,17 +73,23 @@ export async function deleteStoredMedia(storageKey: string): Promise<void> {
 }
 
 export async function persistUploadedMedia(storageKey: string, mimeType: string, localPath: string): Promise<"object-storage" | "database"> {
+  const startedAt = performance.now();
+  let backend: "s3-compatible" | "postgres-chunks" = isObjectStorageConfigured() ? "s3-compatible" : "postgres-chunks";
+  let uploadedBytes = 0;
   try {
+    uploadedBytes = (await stat(localPath)).size;
     if (isObjectStorageConfigured()) {
       try {
         await putObject(storageKey, mimeType, localPath);
         await unlink(localPath).catch(() => undefined);
+        emitMediaMetric({ operation: "upload", backend, outcome: "success", durationMs: mediaDurationSince(startedAt), bytes: uploadedBytes, statusCode: 201 });
         return "object-storage";
       } catch {
         // An unavailable object store should not break small uploads when PostgreSQL fallback is available.
       }
     }
 
+    backend = "postgres-chunks";
     const fileStats = await stat(localPath);
     if (fileStats.size > DB_MEDIA_MAX_BYTES) {
       throw new Error("MEDIA_STORAGE_NOT_CONFIGURED: files larger than 20 MiB require configured S3-compatible object storage; use a smaller file or an external video URL");
@@ -118,55 +126,90 @@ export async function persistUploadedMedia(storageKey: string, mimeType: string,
       client.release();
     }
     await unlink(localPath).catch(() => undefined);
+    emitMediaMetric({ operation: "upload", backend, outcome: "success", durationMs: mediaDurationSince(startedAt), bytes: uploadedBytes, statusCode: 201 });
     return "database";
   } catch (error) {
+    emitMediaMetric({ operation: "upload", backend, outcome: "failure", durationMs: mediaDurationSince(startedAt), bytes: uploadedBytes, statusCode: 503 });
     await unlink(localPath).catch(() => undefined);
     throw error;
   }
 }
 
 export async function streamStoredMedia(storageKey: string, range?: string): Promise<Response | null> {
+  const startedAt = performance.now();
   if (isObjectStorageConfigured()) {
     const remote = await getObject(storageKey, range);
-    if (remote) return remote;
+    if (remote) {
+      emitMediaMetric({ operation: "download", backend: "s3-compatible", outcome: "success", durationMs: mediaDurationSince(startedAt), bytes: Number(remote.headers.get("content-length")) || undefined, range: Boolean(range), statusCode: remote.status });
+      return remote;
+    }
   }
 
-  const { rows } = await pool.query(
-    "SELECT mime_type, size_bytes, chunk_index, data FROM media_object_chunks WHERE storage_key = $1 ORDER BY chunk_index",
+  // Read metadata first. Seeking should fetch only the PostgreSQL chunks needed
+  // for the requested byte range, rather than loading the complete media object.
+  const metadata = await pool.query(
+    "SELECT mime_type, size_bytes FROM media_object_chunks WHERE storage_key = $1 ORDER BY chunk_index LIMIT 1",
     [storageKey],
   );
-  if (!rows.length) return null;
-  const size = Number(rows[0].size_bytes);
-  const mimeType = String(rows[0].mime_type || "application/octet-stream");
-  const bytes = Buffer.concat(rows.map((row: { data: Buffer }) => Buffer.from(row.data)));
-  if (bytes.length !== size) throw new Error("Stored media integrity check failed");
+  if (!metadata.rows.length) {
+    emitMediaMetric({ operation: "download", backend: "postgres-chunks", outcome: "not-found", durationMs: mediaDurationSince(startedAt), range: Boolean(range), statusCode: 404 });
+    return null;
+  }
+
+  const size = Number(metadata.rows[0].size_bytes);
+  const mimeType = String(metadata.rows[0].mime_type || "application/octet-stream");
+  if (!Number.isSafeInteger(size) || size < 0) throw new Error("Stored media size is invalid");
+  if (size === 0) {
+    if (range) return new Response(null, { status: 416, headers: { "Content-Range": "bytes */0", "Accept-Ranges": "bytes" } });
+    return new Response(new Uint8Array(), {
+      status: 200,
+      headers: { "Content-Type": mimeType, "Accept-Ranges": "bytes", "Cache-Control": "private, no-store", "Content-Length": "0" },
+    });
+  }
+
+  const parsedRange = range ? parseMediaByteRange(range, size) : null;
+  if (range && !parsedRange) {
+    return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}`, "Accept-Ranges": "bytes" } });
+  }
+  const start = parsedRange?.start ?? 0;
+  const end = parsedRange?.end ?? size - 1;
+
+  const firstChunk = Math.floor(start / DB_MEDIA_CHUNK_BYTES);
+  const lastChunk = Math.floor(end / DB_MEDIA_CHUNK_BYTES);
+  const chunks = await pool.query(
+    range
+      ? "SELECT chunk_index, data FROM media_object_chunks WHERE storage_key = $1 AND chunk_index BETWEEN $2 AND $3 ORDER BY chunk_index"
+      : "SELECT chunk_index, data FROM media_object_chunks WHERE storage_key = $1 ORDER BY chunk_index",
+    range ? [storageKey, firstChunk, lastChunk] : [storageKey],
+  );
+
+  const expectedChunkCount = lastChunk - firstChunk + 1;
+  if (chunks.rows.length !== expectedChunkCount) throw new Error("Stored media is incomplete");
+  const bytes = Buffer.concat(chunks.rows.map((row: { data: Buffer }) => Buffer.from(row.data)));
+  const offset = range ? start - firstChunk * DB_MEDIA_CHUNK_BYTES : 0;
+  const body = bytes.subarray(offset, offset + (end - start + 1));
 
   const headers = new Headers({
     "Content-Type": mimeType,
     "Accept-Ranges": "bytes",
     "Cache-Control": "private, no-store",
+    "Content-Length": String(body.length),
   });
-  if (!range) {
-    headers.set("Content-Length", String(size));
-    return new Response(bytes, { status: 200, headers });
+  if (range) {
+    headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
+    emitMediaMetric({ operation: "download", backend: "postgres-chunks", outcome: "success", durationMs: mediaDurationSince(startedAt), bytes: body.length, range: true, statusCode: 206 });
+    return new Response(body, { status: 206, headers });
   }
-  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-  if (!match) return new Response(null, { status: 416, headers });
-  const start = match[1] ? Number(match[1]) : Math.max(size - Number(match[2]), 0);
-  const end = match[2] ? Number(match[2]) : size - 1;
-  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > end || start >= size) {
-    headers.set("Content-Range", `bytes */${size}`);
-    return new Response(null, { status: 416, headers });
-  }
-  const boundedEnd = Math.min(end, size - 1);
-  const slice = bytes.subarray(start, boundedEnd + 1);
-  headers.set("Content-Length", String(slice.length));
-  headers.set("Content-Range", `bytes ${start}-${boundedEnd}/${size}`);
-  return new Response(slice, { status: 206, headers });
+  if (body.length !== size) throw new Error("Stored media integrity check failed");
+  emitMediaMetric({ operation: "download", backend: "postgres-chunks", outcome: "success", durationMs: mediaDurationSince(startedAt), bytes: body.length, range: false, statusCode: 200 });
+  return new Response(body, { status: 200, headers });
 }
 
 export async function removeStoredMedia(storageKey: string): Promise<void> {
+  const startedAt = performance.now();
+  const backend = isObjectStorageConfigured() ? "s3-compatible" : "postgres-chunks";
   if (isObjectStorageConfigured()) await deleteObject(storageKey);
   await pool.query("DELETE FROM media_object_chunks WHERE storage_key = $1", [storageKey]);
   await deleteStoredMedia(storageKey);
+  emitMediaMetric({ operation: "delete", backend, outcome: "success", durationMs: mediaDurationSince(startedAt), statusCode: 204 });
 }
