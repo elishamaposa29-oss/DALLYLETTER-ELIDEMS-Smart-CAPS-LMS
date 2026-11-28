@@ -11,6 +11,8 @@ export type DirectMediaRouteBinding = {
 };
 
 type ResolveBinding = (request: Request) => Promise<DirectMediaRouteBinding | null>;
+type CompletedUpload = { storageKey: string; size: number; sha256: string };
+type DirectUploadOptions = { onCompleted?: (request: Request, upload: CompletedUpload) => Promise<unknown> };
 
 function uploadMetadata(request: Request): { mimeType: string; size: number; sha256?: string } | null {
   const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
@@ -31,6 +33,7 @@ export function registerDirectMediaUploadRoutes(
   path: string,
   middleware: RequestHandler[],
   resolveBinding: ResolveBinding,
+  options: DirectUploadOptions = {},
 ): void {
   router.post(path + "/direct-upload-ticket", ...middleware, async (request, response): Promise<void> => {
     if (!isObjectStorageConfigured()) { response.status(503).json({ error: "Direct media uploads require configured private object storage." }); return; }
@@ -61,8 +64,11 @@ export function registerDirectMediaUploadRoutes(
       if (!binding) { response.status(403).json({ error: "You are not authorized to complete this upload." }); return; }
       const completed = await completeDirectMediaUpload({ ticket, userId: request.currentUser!.id,
         routeKey: binding.routeKey, targetType: binding.targetType, targetId: binding.targetId, mimeType });
-      response.status(201).json({ mediaUrl: `/api/lessons/media/${completed.storageKey}?type=${encodeURIComponent(mimeType)}`,
-        storageKey: completed.storageKey, mimeType, size: completed.size, sha256: completed.sha256 });
+      const payload = options.onCompleted
+        ? await options.onCompleted(request, completed)
+        : { mediaUrl: `/api/lessons/media/${completed.storageKey}?type=${encodeURIComponent(mimeType)}`,
+            storageKey: completed.storageKey, mimeType, size: completed.size, sha256: completed.sha256 };
+      response.status(201).json(payload);
     } catch {
       response.status(400).json({ error: "The uploaded object failed ticket, size, MIME or checksum verification. Restart the upload." });
     }
