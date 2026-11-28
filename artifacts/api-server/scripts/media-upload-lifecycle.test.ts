@@ -231,9 +231,14 @@ test("HTTP media delivery denies another account's unreferenced submission draft
       try {
         const address = server.address();
         assert.ok(address && typeof address !== "string");
-        return await fetch(`http://127.0.0.1:${address.port}/api/lessons/media/${storageKey}?type=application/pdf`, {
+        const response = await fetch(`http://127.0.0.1:${address.port}/api/lessons/media/${storageKey}?type=application/pdf`, {
           headers: range ? { Range: range } : {},
         });
+        return {
+          status: response.status,
+          headers: response.headers,
+          body: Buffer.from(await response.arrayBuffer()),
+        };
       } finally {
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
       }
@@ -243,7 +248,7 @@ test("HTTP media delivery denies another account's unreferenced submission draft
     const allowed = await serveAs(actorA.rows[0] as Record<string, unknown>, "bytes=0-5");
     assert.equal(allowed.status, 206);
     assert.equal(allowed.headers.get("content-range"), `bytes 0-5/${bytes.length}`);
-    assert.deepEqual(Buffer.from(await allowed.arrayBuffer()), bytes.subarray(0, 6));
+    assert.deepEqual(allowed.body, bytes.subarray(0, 6));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
