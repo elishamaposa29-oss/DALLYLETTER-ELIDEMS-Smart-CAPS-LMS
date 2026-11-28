@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { and, eq, inArray, like } from "drizzle-orm";
-import { db, handRaisesTable, activityLogTable, classesTable, messagesTable } from "@workspace/db";
+import { db, pool, handRaisesTable, activityLogTable, classesTable, messagesTable } from "@workspace/db";
 import { RaiseHandBody, ListHandRaisesQueryParams } from "@workspace/api-zod";
 import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, removeStoredMedia } from "../lib/media-storage";
@@ -59,6 +59,22 @@ router.post("/raise-hand/with-media", requireAuth, (req, res): void => {
       const question = typeof req.body?.question === "string" ? req.body.question.slice(0, 5000) : "";
       const key = req.file!.filename;
       try {
+        if (!Number.isSafeInteger(classId) || classId <= 0) {
+          await removeStoredMedia(key).catch(() => undefined);
+          res.status(400).json({ error: "A valid classId is required." });
+          return;
+        }
+        // A learner may attach evidence only to a class in which their active
+        // enrollment is recorded; knowing another class ID is not authority.
+        const enrollment = await pool.query(
+          "SELECT 1 FROM public.enrollments WHERE learner_id=$1 AND class_id=$2 AND status='active' LIMIT 1",
+          [user.id, classId],
+        );
+        if (!enrollment.rows.length) {
+          await removeStoredMedia(key).catch(() => undefined);
+          res.status(403).json({ error: "You must be actively enrolled in this class to raise a hand with media." });
+          return;
+        }
         await persistTicketedMediaUpload({ localPath: req.file!.path, storageKey: key, mimeType: req.file!.mimetype, binding: { userId: user.id, routeKey: "handRaises.raise-hand.with-media", targetType: "class-hand-raise", targetId: String(classId), maxBytes: MAX_MEDIA_SIZE_BYTES } });
         const mediaUrl = "/api/lessons/media/" + key + "?type=" + encodeURIComponent(req.file!.mimetype);
         const [handRaise] = await db.insert(handRaisesTable).values({
