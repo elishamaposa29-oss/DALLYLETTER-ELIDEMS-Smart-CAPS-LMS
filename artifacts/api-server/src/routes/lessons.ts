@@ -185,7 +185,7 @@ router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): P
     if (!stored) {
       try { await getMediaStats(storageKey); } catch { res.status(404).json({ error: "Media not found" }); return; }
     }
-    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30;
+    const expiresAt = Math.floor(Date.now() / 1000) + 15 * 60;
     res.setHeader("Cache-Control", "no-store");
     res.json({ shareToken: signMediaShare(storageKey, expiresAt), expiresAt });
   } catch (error) {
