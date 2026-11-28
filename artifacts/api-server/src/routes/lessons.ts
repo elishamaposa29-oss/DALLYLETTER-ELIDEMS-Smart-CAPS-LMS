@@ -30,7 +30,7 @@ import {
 } from "../lib/media-storage";
 import { hasContentPermission } from "../lib/content-permissions";
 import { createPresignedMediaUpload, createPresignedPrivateMediaRead, headObject, isObjectStorageConfigured, isPrivateObjectDeliveryEnabled } from "../lib/object-storage";
-import { completeDirectMediaUpload, issueMediaUploadTicket, persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { abortDirectMediaUpload, completeDirectMediaUpload, issueMediaUploadTicket, persistTicketedMediaUpload } from "../lib/media-upload-tickets";
 import { authorizeTicketedMediaDelivery } from "../lib/media-delivery-access";
 import { logger } from "../lib/logger";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
@@ -212,6 +212,24 @@ router.post("/lessons/media/direct-upload-ticket", requireAuth, requireManagerPe
   }catch(error){
     logger.error({error:error instanceof Error?{name:error.name,message:error.message.slice(0,300)}:"Unknown"}, "Direct media upload ticket issue failed");
     res.status(503).json({error:"A direct upload ticket could not be issued. Please retry."});
+  }
+});
+
+router.post("/lessons/media/direct-upload-abort", requireAuth, requireManagerPermissionIfManager("lessons.create"), authorizeLessonMediaUpload, async (req,res):Promise<void> => {
+  const ticket=typeof req.body?.ticket==="string"?req.body.ticket:"";
+  const mimeType=typeof req.body?.mimeType==="string"?req.body.mimeType.trim().toLowerCase():"";
+  if(!ticket||ticket.length>256||!isAllowedMediaType(mimeType)){res.status(400).json({error:"A valid upload ticket and MIME type are required."});return;}
+  const groupId=Number(req.query.groupId);
+  const isGroupCover=Number.isInteger(groupId)&&groupId>0;
+  try{
+    const aborted=await abortDirectMediaUpload({ticket,userId:req.currentUser!.id,routeKey:"lessons.media",
+      targetType:isGroupCover?"study-group-cover":"lesson-media-library",
+      targetId:String(isGroupCover?groupId:req.currentUser!.id),mimeType});
+    res.status(aborted?200:204).json(aborted?{aborted:true}:{});
+  }catch(error){
+    logger.warn({userId:req.currentUser!.id,error:error instanceof Error?error.message.slice(0,300):"Unknown"},
+      "Direct media upload abort deferred to cleanup worker");
+    res.status(202).json({aborted:true,cleanupPending:true});
   }
 });
 
