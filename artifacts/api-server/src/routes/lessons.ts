@@ -180,6 +180,11 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
 router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): Promise<void> => {
   const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : "";
   if (!/^[a-f0-9-]{36}$/i.test(storageKey)) { res.status(400).json({ error: "Invalid media key" }); return; }
+  const owner = await pool.query("SELECT user_id FROM media_upload_tickets WHERE storage_key = $1 AND status = 'consumed' ORDER BY created_at DESC LIMIT 1", [storageKey]);
+  if (!owner.rows[0] || (Number(owner.rows[0].user_id) !== Number(req.currentUser!.id) && !isOwnerRole(req.currentUser!.role))) {
+    res.status(403).json({ error: "Only the media uploader or platform owner can create a share link" });
+    return;
+  }
   try {
     const stored = await streamStoredMedia(storageKey);
     if (!stored) {
