@@ -51,11 +51,11 @@ after(async () => {
 
 test("route-bound tickets reject cross-account, route, target and MIME replay", async () => {
   const a = await pool.query(
-    "INSERT INTO users(email,password_hash,name,role) VALUES($1,'test-only-hash','Media Test A','student') RETURNING id",
+    "INSERT INTO users(email,password_hash,name,role,manager_level) VALUES($1,'test-only-hash','Media Test A','student','junior') RETURNING id",
     [`media-a-${suffix}@example.test`],
   );
   const b = await pool.query(
-    "INSERT INTO users(email,password_hash,name,role) VALUES($1,'test-only-hash','Media Test B','student') RETURNING id",
+    "INSERT INTO users(email,password_hash,name,role,manager_level) VALUES($1,'test-only-hash','Media Test B','student','junior') RETURNING id",
     [`media-b-${suffix}@example.test`],
   );
   userA = Number(a.rows[0].id);
@@ -805,8 +805,8 @@ test("consumed-object retention boundary preserves recent media and retries orph
 test("real HTTP upload route families reject unauthorized actors before multipart file handling", async () => {
   // The permission middleware refreshes the actor from PostgreSQL; use two real
   // test accounts with authoritative roles rather than trusting synthetic headers.
-  await pool.query("UPDATE users SET role='student', is_manager=false, manager_level=NULL WHERE id=$1", [userA]);
-  await pool.query("UPDATE users SET role='teacher', is_manager=false, manager_level=NULL WHERE id=$1", [userB]);
+  await pool.query("UPDATE users SET role='student', is_manager=false, manager_level='junior' WHERE id=$1", [userA]);
+  await pool.query("UPDATE users SET role='teacher', is_manager=false, manager_level='junior' WHERE id=$1", [userB]);
   const app = express();
   app.use((req, _res, next) => {
     const role = String(req.header("x-test-role") || "student");
