@@ -4,6 +4,7 @@ import { mkdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { deleteObject, getObject, isObjectStorageConfigured, putObject } from "./object-storage";
+import { emitMediaMetric, mediaDurationSince } from "./media-telemetry";
 
 // Free-plan durable fallback: store small uploads in PostgreSQL in bounded chunks.
 // Larger video uploads require configured S3-compatible object storage.
@@ -71,17 +72,23 @@ export async function deleteStoredMedia(storageKey: string): Promise<void> {
 }
 
 export async function persistUploadedMedia(storageKey: string, mimeType: string, localPath: string): Promise<"object-storage" | "database"> {
+  const startedAt = performance.now();
+  let backend: "s3-compatible" | "postgres-chunks" = isObjectStorageConfigured() ? "s3-compatible" : "postgres-chunks";
+  let uploadedBytes = 0;
   try {
+    uploadedBytes = (await stat(localPath)).size;
     if (isObjectStorageConfigured()) {
       try {
         await putObject(storageKey, mimeType, localPath);
         await unlink(localPath).catch(() => undefined);
+        emitMediaMetric({ operation: "upload", backend, outcome: "success", durationMs: mediaDurationSince(startedAt), bytes: uploadedBytes, statusCode: 201 });
         return "object-storage";
       } catch {
         // An unavailable object store should not break small uploads when PostgreSQL fallback is available.
       }
     }
 
+    backend = "postgres-chunks";
     const fileStats = await stat(localPath);
     if (fileStats.size > DB_MEDIA_MAX_BYTES) {
       throw new Error("MEDIA_STORAGE_NOT_CONFIGURED: files larger than 20 MiB require configured S3-compatible object storage; use a smaller file or an external video URL");
@@ -118,17 +125,23 @@ export async function persistUploadedMedia(storageKey: string, mimeType: string,
       client.release();
     }
     await unlink(localPath).catch(() => undefined);
+    emitMediaMetric({ operation: "upload", backend, outcome: "success", durationMs: mediaDurationSince(startedAt), bytes: uploadedBytes, statusCode: 201 });
     return "database";
   } catch (error) {
+    emitMediaMetric({ operation: "upload", backend, outcome: "failure", durationMs: mediaDurationSince(startedAt), bytes: uploadedBytes, statusCode: 503 });
     await unlink(localPath).catch(() => undefined);
     throw error;
   }
 }
 
 export async function streamStoredMedia(storageKey: string, range?: string): Promise<Response | null> {
+  const startedAt = performance.now();
   if (isObjectStorageConfigured()) {
     const remote = await getObject(storageKey, range);
-    if (remote) return remote;
+    if (remote) {
+      emitMediaMetric({ operation: "download", backend: "s3-compatible", outcome: "success", durationMs: mediaDurationSince(startedAt), bytes: Number(remote.headers.get("content-length")) || undefined, range: Boolean(range), statusCode: remote.status });
+      return remote;
+    }
   }
 
   // Read metadata first. Seeking should fetch only the PostgreSQL chunks needed
@@ -137,7 +150,10 @@ export async function streamStoredMedia(storageKey: string, range?: string): Pro
     "SELECT mime_type, size_bytes FROM media_object_chunks WHERE storage_key = $1 ORDER BY chunk_index LIMIT 1",
     [storageKey],
   );
-  if (!metadata.rows.length) return null;
+  if (!metadata.rows.length) {
+    emitMediaMetric({ operation: "download", backend: "postgres-chunks", outcome: "not-found", durationMs: mediaDurationSince(startedAt), range: Boolean(range), statusCode: 404 });
+    return null;
+  }
 
   const size = Number(metadata.rows[0].size_bytes);
   const mimeType = String(metadata.rows[0].mime_type || "application/octet-stream");
@@ -196,14 +212,19 @@ export async function streamStoredMedia(storageKey: string, range?: string): Pro
   });
   if (range) {
     headers.set("Content-Range", \`bytes \${start}-\${end}/\${size}\`);
+    emitMediaMetric({ operation: "download", backend: "postgres-chunks", outcome: "success", durationMs: mediaDurationSince(startedAt), bytes: body.length, range: true, statusCode: 206 });
     return new Response(body, { status: 206, headers });
   }
   if (body.length !== size) throw new Error("Stored media integrity check failed");
+  emitMediaMetric({ operation: "download", backend: "postgres-chunks", outcome: "success", durationMs: mediaDurationSince(startedAt), bytes: body.length, range: false, statusCode: 200 });
   return new Response(body, { status: 200, headers });
 }
 
 export async function removeStoredMedia(storageKey: string): Promise<void> {
+  const startedAt = performance.now();
+  const backend = isObjectStorageConfigured() ? "s3-compatible" : "postgres-chunks";
   if (isObjectStorageConfigured()) await deleteObject(storageKey);
   await pool.query("DELETE FROM media_object_chunks WHERE storage_key = $1", [storageKey]);
   await deleteStoredMedia(storageKey);
+  emitMediaMetric({ operation: "delete", backend, outcome: "success", durationMs: mediaDurationSince(startedAt), statusCode: 204 });
 }
