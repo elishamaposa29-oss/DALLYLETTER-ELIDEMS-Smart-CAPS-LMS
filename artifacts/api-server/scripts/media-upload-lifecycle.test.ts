@@ -7,13 +7,14 @@ import path from "node:path";
 import { pool } from "@workspace/db";
 import {
   cleanupExpiredMediaUploads,
+  cleanupOrphanedMediaStagingFiles,
   consumeMediaUploadTicket,
   ensureMediaUploadTicketSchema,
   issueMediaUploadTicket,
   markMediaUploadVerified,
   persistTicketedMediaUpload,
 } from "../src/lib/media-upload-tickets";
-import { removeStoredMedia } from "../src/lib/media-storage";
+import { ensureMediaDirectory, getMediaDirectory, removeStoredMedia } from "../src/lib/media-storage";
 import { authorizeTicketedMediaDelivery } from "../src/lib/media-delivery-access";
 
 const suffix = randomUUID();
@@ -206,6 +207,17 @@ test("the shared lesson-media endpoint invokes resource-aware ticket authorizati
   ]) {
     assert.ok(policySource.includes(`case "${routeKey}"`), `Missing delivery policy for ${routeKey}`);
   }
+});
+
+test("stale UUID staging files without an active ticket are removed", async () => {
+  await ensureMediaDirectory();
+  const key = randomUUID();
+  const filePath = path.join(getMediaDirectory(), key);
+  await writeFile(filePath, Buffer.from("abandoned upload staging bytes"));
+  const result = await cleanupOrphanedMediaStagingFiles(0, 50);
+  assert.ok(result.scanned >= 1);
+  assert.ok(result.deleted >= 1);
+  await assert.rejects(readFile(filePath));
 });
 
 test("every file-backed media route uses ticket persistence behind its existing authorization guard", async () => {
