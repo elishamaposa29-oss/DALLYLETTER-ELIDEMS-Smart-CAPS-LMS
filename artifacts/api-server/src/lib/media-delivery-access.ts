@@ -13,11 +13,12 @@ type MediaPrincipal = NonNullable<Express.Request["currentUser"]>;
 export async function authorizeTicketedMediaDelivery(storageKey: string, actor: MediaPrincipal): Promise<boolean> {
   if (!/^[a-f0-9-]{36}$/i.test(storageKey)) return false;
   const result = await pool.query(
-    "SELECT user_id, route_key, target_type, target_id FROM public.media_upload_tickets WHERE storage_key=$1 AND status='consumed' ORDER BY consumed_at DESC LIMIT 1",
+    "SELECT user_id, route_key, target_type, target_id, status FROM public.media_upload_tickets WHERE storage_key=$1 ORDER BY created_at DESC LIMIT 1",
     [storageKey],
   );
-  const ticket = result.rows[0] as { user_id: number; route_key: string; target_type: string; target_id: string } | undefined;
+  const ticket = result.rows[0] as { user_id: number; route_key: string; target_type: string; target_id: string; status: string } | undefined;
   if (!ticket) return authorizeLegacyMediaReference(storageKey, actor);
+  if (ticket.status !== "consumed") return false;
   if (Number(ticket.user_id) === Number(actor.id) || isOwnerRole(actor.role)) return true;
 
   const role = normalizeRole(actor.role);
