@@ -226,7 +226,7 @@ export default function StudentChat() {
     if (selectedGroupId) body.append("groupId", String(selectedGroupId));
     if (selectedUserId) body.append("recipientId", String(selectedUserId));
     body.append("file", file, file.name);
-    const upload = await authenticatedFetch("/api/messages/media", { method: "POST", body });
+    const upload = await authenticatedFetch("/api/messages/media?" + (selectedGroupId ? "groupId=" + encodeURIComponent(String(selectedGroupId)) : "recipientId=" + encodeURIComponent(String(selectedUserId))), { method: "POST", body });
     const result = await upload.json().catch(() => null) as { mediaUrl?: string; mimeType?: string; error?: string } | null;
     if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error ?? "Attachment upload failed.");
     await sendMessageMutation.mutateAsync({ data: {
@@ -242,7 +242,7 @@ export default function StudentChat() {
     if (selectedGroupId) body.append("groupId", String(selectedGroupId));
     if (selectedUserId) body.append("recipientId", String(selectedUserId));
     body.append("file", audio, "voice-message.webm");
-    const upload = await authenticatedFetch("/api/messages/media", { method: "POST", body });
+    const upload = await authenticatedFetch("/api/messages/media?" + (selectedGroupId ? "groupId=" + encodeURIComponent(String(selectedGroupId)) : "recipientId=" + encodeURIComponent(String(selectedUserId))), { method: "POST", body });
     const result = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
     if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error ?? "Voice upload failed.");
     await sendMessageMutation.mutateAsync({
