@@ -1,7 +1,25 @@
 import { createHash, createHmac } from "node:crypto";
 import { createReadStream } from "node:fs";
 
-export interface MediaObjectStorageProvider {\n  readonly name: string;\n  readonly supportsByteRanges: boolean;\n  readonly supportsStreamingUpload: boolean;\n  put(storageKey: string, mimeType: string, localPath: string): Promise<void>;\n  get(storageKey: string, range?: string): Promise<Response | null>;\n  delete(storageKey: string): Promise<void>;\n}\n\nexport const s3CompatibleMediaProvider = {\n  name: "s3-compatible",\n  supportsByteRanges: true,\n  supportsStreamingUpload: true,\n  put: putObject,\n  get: getObject,\n  delete: deleteObject,\n} satisfies MediaObjectStorageProvider;\n\ntype StorageConfig = {
+export interface MediaObjectStorageProvider {
+  readonly name: string;
+  readonly supportsByteRanges: boolean;
+  readonly supportsStreamingUpload: boolean;
+  put(storageKey: string, mimeType: string, localPath: string): Promise<void>;
+  get(storageKey: string, range?: string): Promise<Response | null>;
+  delete(storageKey: string): Promise<void>;
+}
+
+export const s3CompatibleMediaProvider = {
+  name: "s3-compatible",
+  supportsByteRanges: true,
+  supportsStreamingUpload: true,
+  put: putObject,
+  get: getObject,
+  delete: deleteObject,
+} satisfies MediaObjectStorageProvider;
+
+type StorageConfig = {
   endpoint: string;
   bucket: string;
   accessKeyId: string;
@@ -68,7 +86,8 @@ function signRequest(
   const canonicalHeaders = Object.entries(headers)
     .map(([name, value]) => [name.toLowerCase(), value.trim().replace(/\s+/g, " ")] as const)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, value]) => name + ":" + value + "\n")
+    .map(([name, value]) => name + ":" + value + "
+")
     .join("");
   const signedHeaders = Object.keys(headers).map(name => name.toLowerCase()).sort().join(";");
   const canonicalRequest = [
@@ -78,9 +97,11 @@ function signRequest(
     canonicalHeaders,
     signedHeaders,
     payloadHash,
-  ].join("\n");
+  ].join("
+");
   const scope = shortDate + "/" + cfg.region + "/s3/aws4_request";
-  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("\n");
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("
+");
   const kDate = hmac("AWS4" + cfg.secretAccessKey, shortDate);
   const kRegion = hmac(kDate, cfg.region);
   const kService = hmac(kRegion, "s3");
