@@ -58,7 +58,6 @@ export async function uploadLessonMedia(
   token: string | null,
   options: { groupId?: number; onProgress?: (percent: number) => void } = {},
 ): Promise<UploadResult> {
-  const endpoint = mediaPath(options.groupId);
   const auth = token ? { Authorization: "Bearer " + token } : {};
   let ticket: DirectTicket | null = null;
 
