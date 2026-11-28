@@ -36,7 +36,7 @@ test("S3-compatible adapter exposes the provider-neutral storage contract", () =
   assert.equal(typeof s3CompatibleMediaProvider.delete, "function");
 });
 
-import { createPresignedMediaUpload, createPresignedPrivateMediaRead } from "../src/lib/object-storage.ts";
+import { createPresignedMediaUpload, createPresignedPrivateMediaRead, isPrivateObjectDeliveryEnabled } from "../src/lib/object-storage.ts";
 
 test("presigned media URLs bind methods, content type and short expiries", () => {
   const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION"] as const;
@@ -89,6 +89,30 @@ test("object metadata HEAD is signed and treats missing objects as absent", asyn
     assert.deepEqual(methods, ["HEAD", "HEAD"]);
   } finally {
     globalThis.fetch = originalFetch;
+    env.forEach((key, index) => {
+      if (prior[index] === undefined) delete process.env[key];
+      else process.env[key] = prior[index];
+    });
+  }
+});
+
+
+test("private signed reads stay disabled until explicitly enabled", () => {
+  const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION","MEDIA_S3_SIGNED_READS_ENABLED"] as const;
+  const prior = env.map(key => process.env[key]);
+  process.env.MEDIA_S3_ENDPOINT = "https://objects.example.test";
+  process.env.MEDIA_S3_BUCKET = "private-media";
+  process.env.MEDIA_S3_ACCESS_KEY_ID = "test-access";
+  process.env.MEDIA_S3_SECRET_ACCESS_KEY = "test-secret";
+  process.env.MEDIA_S3_REGION = "auto";
+  try {
+    delete process.env.MEDIA_S3_SIGNED_READS_ENABLED;
+    assert.equal(isPrivateObjectDeliveryEnabled(), false);
+    process.env.MEDIA_S3_SIGNED_READS_ENABLED = "true";
+    assert.equal(isPrivateObjectDeliveryEnabled(), true);
+    process.env.MEDIA_S3_SIGNED_READS_ENABLED = "false";
+    assert.equal(isPrivateObjectDeliveryEnabled(), false);
+  } finally {
     env.forEach((key, index) => {
       if (prior[index] === undefined) delete process.env[key];
       else process.env[key] = prior[index];
