@@ -126,6 +126,7 @@ test("ticketed private media is isolated by account while published lesson media
   assert.equal(await authorizeTicketedMediaDelivery(privateTicket.storageKey, actorA.rows[0]), true);
   assert.equal(await authorizeTicketedMediaDelivery(privateTicket.storageKey, actorB.rows[0]), false);
 
+  await pool.query("UPDATE users SET role='teacher' WHERE id=$1", [userA]);
   const sharedTicket = await issueMediaUploadTicket({
     userId: userA, routeKey: "lessons.media", targetType: "lesson-media-library",
     targetId: String(userA), mimeType: "application/pdf", maxBytes: 1024,
@@ -180,6 +181,24 @@ test("expired unconsumed tickets are swept and their orphan objects removed", as
   assert.ok(result.scanned >= 1);
   const remaining = await pool.query("SELECT id FROM media_upload_tickets WHERE id=$1", [orphan.ticketId]);
   assert.equal(remaining.rows.length, 0);
+});
+
+test("the shared lesson-media endpoint invokes resource-aware ticket authorization", async () => {
+  const routeSource = await readFile("src/routes/lessons.ts", "utf8");
+  const policySource = await readFile("src/lib/media-delivery-access.ts", "utf8");
+  assert.ok(routeSource.includes("authorizeTicketedMediaDelivery(storageKey, actor)"));
+  for (const routeKey of [
+    "lessons.media",
+    "assignments.material",
+    "assignments.submission-material",
+    "exercises.question-media",
+    "exercises.answer-media",
+    "handRaises.raise-hand.with-media",
+    "users.me.avatar",
+    "users.me.cover",
+  ]) {
+    assert.ok(policySource.includes(`case "${routeKey}"`), `Missing delivery policy for ${routeKey}`);
+  }
 });
 
 test("every file-backed media route uses ticket persistence behind its existing authorization guard", async () => {
