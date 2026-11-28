@@ -424,3 +424,66 @@ test("real HTTP role guards reject upload bytes before Multer writes files", asy
   const afterFiles = new Set(await readdir(getMediaDirectory()).catch(() => [] as string[]));
   assert.deepEqual([...afterFiles].filter(file => !before.has(file)), [], "Rejected requests must not persist multipart files");
 });
+
+
+test("authorized private media redirects to an object-scoped short-lived URL after resource authorization", async () => {
+  const ticket = await issueMediaUploadTicket({
+    userId: userA, routeKey: "assignments.submission-material", targetType: "learner-submission-draft",
+    targetId: String(userA), mimeType: "application/pdf", maxBytes: 1024,
+  });
+  storageKeys.push(ticket.storageKey);
+  const sha256 = "e".repeat(64);
+  await markMediaUploadVerified({
+    ticket: ticket.ticket, userId: userA, routeKey: "assignments.submission-material",
+    targetType: "learner-submission-draft", targetId: String(userA), mimeType: "application/pdf",
+    size: 100, sha256,
+  });
+  await consumeMediaUploadTicket({
+    ticket: ticket.ticket, userId: userA, routeKey: "assignments.submission-material",
+    targetType: "learner-submission-draft", targetId: String(userA), mimeType: "application/pdf",
+  });
+  const actor = (await pool.query("SELECT * FROM users WHERE id=$1", [userA])).rows[0];
+  const app = express();
+  app.use((req, _res, next) => { Reflect.set(req, "currentUser", actor); next(); });
+  app.use("/api", lessonsRouter);
+  const server = app.listen(0);
+  await new Promise<void>(resolve => server.once("listening", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION"] as const;
+  const prior = env.map(key => process.env[key]);
+  const originalFetch = globalThis.fetch;
+  process.env.MEDIA_S3_ENDPOINT = "https://objects.example.test";
+  process.env.MEDIA_S3_BUCKET = "private-media";
+  process.env.MEDIA_S3_ACCESS_KEY_ID = "test-access";
+  process.env.MEDIA_S3_SECRET_ACCESS_KEY = "test-secret";
+  process.env.MEDIA_S3_REGION = "auto";
+  let headRequests = 0;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.method, "HEAD");
+    headRequests += 1;
+    return new Response(null, { status: 200, headers: { "content-length": "100", "content-type": "application/pdf" } });
+  }) as typeof fetch;
+  try {
+    const response = await originalFetch(`http://127.0.0.1:${address.port}/api/lessons/media/${ticket.storageKey}?type=application/pdf`, {
+      headers: { Range: "bytes=0-9" },
+      redirect: "manual",
+    });
+    assert.equal(response.status, 307);
+    assert.equal(headRequests, 1);
+    const location = response.headers.get("location");
+    assert.ok(location);
+    const signed = new URL(location!);
+    assert.equal(signed.searchParams.get("X-Amz-Expires"), "120");
+    assert.ok(signed.searchParams.has("X-Amz-Signature"));
+    assert.equal(response.headers.get("cache-control"), "private, no-store, max-age=0");
+    assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+  } finally {
+    globalThis.fetch = originalFetch;
+    env.forEach((key, index) => {
+      if (prior[index] === undefined) delete process.env[key];
+      else process.env[key] = prior[index];
+    });
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+});
