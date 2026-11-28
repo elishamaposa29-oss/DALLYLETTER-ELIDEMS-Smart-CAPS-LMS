@@ -560,6 +560,11 @@ router.patch("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void
 const teacherDocumentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
+  // Reject non-teacher accounts before multer buffers up to 10 MiB in memory.
+  if (normalizeRole(req.currentUser!.role) !== "teacher") {
+    res.status(403).json({ error: "Teacher account required" });
+    return;
+  }
   teacherDocumentUpload.single("file")(req, res, (error) => {
     void (async () => {
       if (error || !req.file) { res.status(400).json({ error: "Upload a PDF, image or document up to 10 MB" }); return; }
