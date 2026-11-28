@@ -1168,6 +1168,40 @@ const authorizeQualificationDocumentUpload = (req: Request, res: Response, next:
   }).catch(next);
 };
 
+registerDirectMediaUploadRoutes(router, "/qualifications/:id/document", [requireAuth, authorizeQualificationDocumentUpload], async request => {
+  const id = Number(request.params.id);
+  const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+  if (!Number.isSafeInteger(id) || id <= 0 || !["application/pdf","image/jpeg","image/png"].includes(mimeType)) return null;
+  const found = await pool.query("SELECT user_id FROM teacher_qualifications WHERE id=$1", [id]);
+  if (!found.rows.length || Number(found.rows[0].user_id) !== request.currentUser!.id) return null;
+  return { routeKey: "qualifications.document", targetType: "teacher-qualification", targetId: String(id), maxBytes: 10 * 1024 * 1024 };
+}, {
+  onCompleted: async (request, uploaded) => {
+    const actor = request.currentUser!;
+    const id = Number(request.params.id);
+    const mimeType = String(request.body.mimeType);
+    const fileName = typeof request.body.fileName === "string" ? request.body.fileName.replace(/[\\r\\n]/g, "").slice(0, 255) || "qualification-document" : "qualification-document";
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const current = await client.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1 FOR UPDATE", [id]);
+      if (!current.rows.length || Number(current.rows[0].user_id) !== actor.id) throw new Error("Qualification ownership changed during document upload");
+      const result = await client.query(
+        "INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data,storage_key) VALUES($1,'certificate',$2,$3,$4,decode('', 'hex'),$5) RETURNING id,file_name,mime_type,size_bytes,created_at",
+        [actor.id, fileName, mimeType, uploaded.size, uploaded.storageKey],
+      );
+      const linked = await client.query("UPDATE teacher_qualifications SET document_id=$1 WHERE id=$2 AND user_id=$3 RETURNING id", [result.rows[0].id, id, actor.id]);
+      if (!linked.rows.length) throw new Error("Qualification disappeared before its document could be linked");
+      await client.query("COMMIT");
+      return { document: result.rows[0], message: "Document uploaded; qualification remains pending verification." };
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      await removeStoredMedia(uploaded.storageKey).catch(() => undefined);
+      throw error;
+    } finally { client.release(); }
+  },
+});
+
 router.post("/qualifications/:id/document", requireAuth, authorizeQualificationDocumentUpload, (req,res,next):void => {
   qualificationUpload.single("file")(req,res,error=>{
     void (async()=>{
