@@ -814,9 +814,9 @@ test("real HTTP upload route families reject unauthorized actors before multipar
   });
   app.use("/api/assignments", assignmentsRouter);
   app.use("/api/exercises", exercisesRouter);
-  app.use("/api/hand-raises", handRaisesRouter);
-  app.use("/api/messages", messagesRouter);
-  app.use("/api/users", usersRouter);
+  app.use("/api", handRaisesRouter);
+  app.use("/api", messagesRouter);
+  app.use("/api", usersRouter);
   const server = app.listen(0);
   await new Promise<void>(resolve => server.once("listening", resolve));
   const address = server.address();
@@ -826,9 +826,9 @@ test("real HTTP upload route families reject unauthorized actors before multipar
     { path: "/api/assignments/submission-material", role: "teacher", expected: 403, label: "student-only submission material" },
     { path: "/api/exercises/answer-media", role: "teacher", expected: 403, label: "student-only exercise answers" },
     { path: "/api/exercises/question-media", role: "student", expected: 403, label: "teacher-only exercise questions" },
-    { path: "/api/hand-raises/raise-hand/with-media", role: "teacher", expected: 403, label: "student-only hand raises" },
-    { path: "/api/messages/messages/media?groupId=2147483647", role: "student", expected: 403, label: "non-member group conversation media" },
-    { path: "/api/users/users/me/teacher-documents", role: "student", expected: 403, label: "teacher-only qualification documents" },
+    { path: "/api/raise-hand/with-media", role: "teacher", expected: 403, label: "student-only hand raises" },
+    { path: "/api/messages/media?groupId=2147483647", role: "student", expected: 403, label: "non-member group conversation media" },
+    { path: "/api/users/me/teacher-documents", role: "student", expected: 403, label: "teacher-only qualification documents" },
   ];
   try {
     for (const item of cases) {
