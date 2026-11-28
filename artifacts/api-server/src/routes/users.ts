@@ -399,6 +399,25 @@ const avatarUpload = multer({
   fileFilter: (_req, file, callback) => callback(null, ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)),
 });
 
+registerDirectMediaUploadRoutes(router, "/users/me/avatar", [requireAuth], async request => {
+  const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+  if (!["image/jpeg","image/png","image/webp"].includes(mimeType)) return null;
+  return { routeKey: "users.me.avatar", targetType: "user-avatar", targetId: String(request.currentUser!.id), maxBytes: 8 * 1024 * 1024 };
+}, {
+  onCompleted: async (_request, uploaded) => {
+    const actor = _request.currentUser!;
+    const [before] = await db.select({ avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, actor.id));
+    const avatarUrl = "/api/lessons/media/" + uploaded.storageKey + "?type=" + _request.body.mimeType;
+    try {
+      const [user] = await db.update(usersTable).set({ avatarUrl }).where(eq(usersTable.id, actor.id)).returning(safeUserFields);
+      if (!user) throw new Error("User not found");
+      const oldKey = typeof before?.avatarUrl === "string" ? before.avatarUrl.match(/^\\/api\\/lessons\\/media\\/([a-f0-9-]{36})\\?type=image\\/(?:jpeg|png|webp)$/i)?.[1] : null;
+      if (oldKey && oldKey !== uploaded.storageKey) await removeStoredMedia(oldKey).catch(() => undefined);
+      return { ...user, createdAt: user.createdAt.toISOString() };
+    } catch (error) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw error; }
+  },
+});
+
 router.post("/users/me/avatar", requireAuth, (req, res, next): void => {
   avatarUpload.single("file")(req, res, error => {
     void (async () => {
@@ -439,6 +458,26 @@ const coverUpload = multer({
 async function ensureProfileCoverSchema(): Promise<void> {
   await pool.query("CREATE TABLE IF NOT EXISTS user_profile_covers (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, media_url text NOT NULL, media_type text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())");
 }
+
+registerDirectMediaUploadRoutes(router, "/users/me/cover", [requireAuth], async request => {
+  const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+  if (!["image/jpeg","image/png","image/webp","video/mp4","video/webm","video/quicktime"].includes(mimeType)) return null;
+  return { routeKey: "users.me.cover", targetType: "user-cover", targetId: String(request.currentUser!.id), maxBytes: 50 * 1024 * 1024 };
+}, {
+  onCompleted: async (_request, uploaded) => {
+    const actor = _request.currentUser!;
+    const mimeType = String(_request.body.mimeType);
+    const mediaUrl = "/api/lessons/media/" + uploaded.storageKey + "?type=" + mimeType;
+    await ensureProfileCoverSchema();
+    const prior = await pool.query("SELECT media_url FROM user_profile_covers WHERE user_id=$1", [actor.id]);
+    try {
+      await pool.query("INSERT INTO user_profile_covers(user_id,media_url,media_type,updated_at) VALUES($1,$2,$3,now()) ON CONFLICT(user_id) DO UPDATE SET media_url=EXCLUDED.media_url,media_type=EXCLUDED.media_type,updated_at=now()", [actor.id, mediaUrl, mimeType]);
+    } catch (error) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw error; }
+    const oldKey = typeof prior.rows[0]?.media_url === "string" ? prior.rows[0].media_url.match(/^\\/api\\/lessons\\/media\\/([a-f0-9-]{36})\\?type=/i)?.[1] : null;
+    if (oldKey && oldKey !== uploaded.storageKey) await removeStoredMedia(oldKey).catch(() => undefined);
+    return { coverUrl: mediaUrl, coverType: mimeType };
+  },
+});
 
 router.post("/users/me/cover", requireAuth, (req, res, next): void => {
   coverUpload.single("file")(req, res, error => {
