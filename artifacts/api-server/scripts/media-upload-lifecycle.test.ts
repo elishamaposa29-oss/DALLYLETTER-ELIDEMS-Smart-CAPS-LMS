@@ -26,6 +26,7 @@ import {
 } from "../src/lib/media-upload-tickets";
 import { ensureMediaDirectory, getMediaDirectory, removeStoredMedia } from "../src/lib/media-storage";
 import { ensureConnectSchema } from "../src/lib/ensureConnectSchema";
+import { ensureManagerPermissionSchema } from "../src/lib/ensureManagerPermissionSchema";
 import { authorizeTicketedMediaDelivery } from "../src/lib/media-delivery-access";
 
 const suffix = randomUUID();
@@ -37,6 +38,7 @@ before(async () => {
   // CI provisions the canonical Drizzle schema, while these additive runtime
   // tables are normally ensured during API startup. Mirror that startup here.
   await ensureConnectSchema();
+  await ensureManagerPermissionSchema();
   await ensureMediaUploadTicketSchema();
 });
 
@@ -396,17 +398,18 @@ test("real HTTP role guards reject upload bytes before Multer writes files", asy
   await ensureMediaDirectory();
   const before = new Set(await readdir(getMediaDirectory()).catch(() => [] as string[]));
   const cases = [
-    { route: "/api/lessons/media", actor: { id: 910001, role: "student", isManager: false }, status: 403 },
-    { route: "/api/material", actor: { id: 910002, role: "student", isManager: false }, status: 403 },
-    { route: "/api/submission-material", actor: { id: 910003, role: "teacher", isManager: false }, status: 403 },
-    { route: "/api/answer-media", actor: { id: 910004, role: "teacher", isManager: false }, status: 403 },
-    { route: "/api/question-media", actor: { id: 910005, role: "student", isManager: false }, status: 403 },
-    { route: "/api/raise-hand/with-media", actor: { id: 910006, role: "teacher", isManager: false }, status: 403 },
-    { route: "/api/users/me/teacher-documents", actor: { id: 910007, role: "student", isManager: false }, status: 403 },
+    { route: "/api/lessons/media", role: "student", status: 403 },
+    { route: "/api/material", role: "student", status: 403 },
+    { route: "/api/submission-material", role: "teacher", status: 403 },
+    { route: "/api/answer-media", role: "teacher", status: 403 },
+    { route: "/api/question-media", role: "student", status: 403 },
+    { route: "/api/raise-hand/with-media", role: "teacher", status: 403 },
+    { route: "/api/users/me/teacher-documents", role: "student", status: 403 },
   ];
   for (const item of cases) {
+    await pool.query("UPDATE users SET role=$2,is_manager=false WHERE id=$1", [userA,item.role]);
     const app = express();
-    app.use((req, _res, next) => { Reflect.set(req, "currentUser", item.actor); next(); });
+    app.use((req, _res, next) => { Reflect.set(req, "currentUser", { id: userA, role: item.role, isManager: false }); next(); });
     app.use("/api", lessonsRouter, messagesRouter, handRaisesRouter, usersRouter);
     app.use("/api", assignmentsRouter);
     app.use("/api", exercisesRouter);
@@ -544,6 +547,7 @@ test("direct object upload completion verifies HEAD metadata, actual bytes, chec
 
 
 test("direct upload ticket and completion endpoints run through real authenticated HTTP routes", async () => {
+  await pool.query("UPDATE users SET role='teacher',is_manager=false WHERE id=$1", [userA]);
   const bytes = Buffer.from("%PDF-1.7\\nDallyletter HTTP direct upload route test\\n%%EOF\\n");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const app = express();
@@ -636,6 +640,7 @@ test("direct upload ticket and completion endpoints run through real authenticat
 
 
 test("real lesson upload HTTP lifecycle publishes only after verification and serves bounded Range reads", async () => {
+  await pool.query("UPDATE users SET role='teacher',is_manager=false WHERE id=$1", [userA]);
   const bytes = Buffer.from("%PDF-1.7\\nDallyletter real route lifecycle\\n%%EOF\\n");
   const app = express();
   app.use((req, _res, next) => {
