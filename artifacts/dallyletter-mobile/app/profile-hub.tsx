@@ -1,6 +1,7 @@
 import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { VideoView, useVideoPlayer } from "expo-video";
@@ -212,8 +213,8 @@ export default function MobileProfileHub() {
       const asset=picked.assets[0];const mime=asset.mimeType||"image/jpeg";
       if(!["image/jpeg","image/png","image/webp"].includes(mime)){Alert.alert("Unsupported image","Choose a JPG, PNG or WebP image.");return;}
       if(asset.fileSize&&asset.fileSize>8*1024*1024){Alert.alert("File too large","Profile photos must be 8 MB or smaller.");return;}
-      setCoverBusy(true);const form=new FormData();form.append("file",{uri:asset.uri,name:asset.fileName||"profile-avatar.jpg",type:mime} as any);
-      const result=await api("/api/users/me/avatar",{method:"POST",body:form});
+      setCoverBusy(true);
+      const result=await uploadRouteMedia(asset.uri,asset.fileName||"profile-avatar.jpg",mime,token,"/api/users/me/avatar");
       await refreshMediaProfile();
       setMessage("Profile photo saved and reloaded from your account.");
     }catch(e){Alert.alert("Profile photo upload failed",e instanceof Error?e.message:"Please try again.");}
@@ -231,9 +232,7 @@ export default function MobileProfileHub() {
       if(!["image/jpeg","image/png","image/webp","video/mp4","video/webm","video/quicktime"].includes(mime)){Alert.alert("Unsupported media","Choose a JPG, PNG, WebP, MP4, WebM or MOV file.");return;}
       if(asset.fileSize&&asset.fileSize>20*1024*1024){Alert.alert("File too large","Cover media must be 20 MB or smaller on the current storage configuration.");return;}
       setCoverBusy(true);
-      const form=new FormData();
-      form.append("file",{uri:asset.uri,name:asset.fileName||(mime.startsWith("video/")?"profile-cover.mp4":"profile-cover.jpg"),type:mime} as any);
-      const result=await api("/api/users/me/cover",{method:"POST",body:form});
+      const result=await uploadRouteMedia(asset.uri,asset.fileName||(mime.startsWith("video/")?"profile-cover.mp4":"profile-cover.jpg"),mime,token,"/api/users/me/cover");
       await refreshMediaProfile();
       setMessage("Profile cover saved and reloaded from your account.");
     }catch(e){Alert.alert("Cover upload failed",e instanceof Error?e.message:"Please try again.");}
