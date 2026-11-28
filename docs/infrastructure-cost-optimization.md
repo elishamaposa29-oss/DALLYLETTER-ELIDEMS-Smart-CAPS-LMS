@@ -117,8 +117,36 @@ The current API media-storage adapter is shared by these upload/download surface
 | Teacher documents | `routes/users.ts` | Profile/teacher-document download handler | Role-restricted document access; private/no-store |
 | Mobile offline media | `artifacts/dallyletter-mobile/components/OfflineMediaDownload.tsx` | Authenticated lesson media URL | Client downloads through API; offline file storage is distinct from service-worker cache |
 
-**Important gaps / follow-up:** this is a source-code route inventory, not proof that every feature's lifecycle works end-to-end. The shared adapter currently supports S3-compatible object storage and PostgreSQL chunks, while upload handlers still stage files through API-local temporary disk. No direct-to-provider upload exists yet. Message media uses its own route and needs separate authorization regression coverage before any redirect or edge-delivery change. Profile and teacher documents must remain private. External video URLs are not owned by this storage adapter.
+**Important gaps / follow-up:** this is a source-code route inventory, not proof that every feature's lifecycle works end-to-end. The shared adapter supports S3-compatible object storage and PostgreSQL chunks. A one-time direct-to-object-store ticket/PUT/verify/consume/abort flow has now been added for lesson media and study-group covers, and the web teacher lesson, teacher/admin poll-image, study-group-cover and Android teacher-lesson upload callers use it with the existing multipart path as a compatibility fallback. Other route families still use API-local staging and need their own route-bound direct-upload integration before claiming full coverage. Message media uses its own route and separate conversation-membership authorization; profile and teacher documents remain private. External video URLs are not owned by this storage adapter.
 
 **Cache policy:** public immutable build assets may use long-lived edge caching; user-generated media, assignment submissions, message/voice attachments, avatars/covers, hand-raise evidence and teacher documents remain private/no-store at the API boundary. The service worker intentionally excludes all API/media URLs and Range requests; this avoids stale or cross-account private data but means media is not automatically available offline unless the explicit mobile/web offline-download workflow saves it.
 
 **Instrumentation:** API logs now emit aggregate media transfer events with operation, backend, outcome, duration, byte count, range flag and HTTP status only. Storage keys, URLs, user IDs, signed URLs and file metadata are intentionally excluded. Validate log volume and dashboards before enabling high-volume production sampling.
+
+## F. Direct uploads and authenticated private R2 edge delivery (PR 138 implementation)
+
+### Direct upload lifecycle
+- The API issues a short-lived, single-use ticket bound to the authenticated user, route, target resource, MIME type, and exact expected byte count.
+- The browser/Android client PUTs directly to the S3-compatible object endpoint using a presigned URL; the API does not receive the media body on this path.
+- Completion independently checks object HEAD size and MIME metadata, streams the object back to calculate the actual byte count and SHA-256, validates the file signature, then atomically marks and consumes the ticket.
+- A cross-account completion, expired ticket, replay, wrong target, size mismatch, MIME mismatch or checksum mismatch is rejected. Failed verification removes the object; interrupted client uploads can call the authenticated abort endpoint, and the expiry sweeper retries failed deletion.
+- Existing multipart API upload paths remain available as a compatibility fallback. This first direct-upload rollout currently covers lesson media, study-group covers and poll-question images on web, plus teacher lesson media on Android. Assignment/submission, exercise answer/question, hand-raise, chat/voice, avatar/cover and teacher-document upload clients still require route-specific direct-upload adoption. Do not claim every upload route is direct yet.
+- The separate resumable session/chunk workflow is tracked by open PR #137. PR #138 does not replace or reimplement that workflow; coordinate shared-file reconciliation before merging either branch.
+
+### Private edge Worker
+- `workers/media-delivery/src/index.mjs` is a Cloudflare Worker that reads from a private R2 bucket binding. It accepts only GET/HEAD/OPTIONS, validates a 120-second HMAC object-scoped signature, checks a strict UUID object key, enforces an origin allowlist, supports byte ranges and returns private/no-store headers.
+- API media routes retain their existing role/resource/conversation authorization checks. When signed reads are explicitly enabled, the API issues a short-lived Worker URL only after authorization; the Worker never exposes the bucket as a public origin.
+- `MEDIA_EDGE_BASE_URL` and `MEDIA_EDGE_SIGNING_SECRET` configure the API's edge signer. The same signing secret must be installed as a Worker secret. `MEDIA_S3_SIGNED_READS_ENABLED=true` remains an explicit rollout switch; keep it disabled until Worker, CORS, browser and Android tests are verified.
+- `workers/media-delivery/wrangler.toml` binds the Worker to a private bucket named `dallyletter-media`. The bucket and Worker have not been provisioned or deployed from this branch because R2 is not enabled on the account.
+
+### R2 provisioning checklist (only after R2 is enabled)
+1. Create a **private** R2 bucket named `dallyletter-media`; do not enable public bucket access.
+2. Set bucket CORS to the exact production web origins (not `*`), with methods GET, HEAD, PUT and OPTIONS; allow Content-Type, Range, If-Range and If-None-Match; expose Accept-Ranges, Content-Range, Content-Length, Content-Type and ETag; use a bounded preflight max-age.
+3. Deploy the Worker from `workers/media-delivery` with `wrangler deploy`. Set `ALLOWED_ORIGINS` to the same exact production origins.
+4. Set the Worker secret with `wrangler secret put MEDIA_EDGE_SIGNING_SECRET`; set the same high-entropy secret in the API's protected environment, plus `MEDIA_EDGE_BASE_URL`. Keep `MEDIA_S3_SIGNED_READS_ENABLED` false until end-to-end checks pass.
+5. Configure the API's S3-compatible endpoint, bucket, access key and secret as protected service environment variables. Never put secrets in source control or build-time frontend variables.
+6. Verify direct browser PUT with CORS, Android PUT, HEAD/GET checksum validation, expired/replayed/aborted ticket rejection, cross-account denial, private GET/HEAD, byte ranges, Worker origin rejection, and deletion/orphan cleanup. Only then enable signed edge redirects.
+
+### Benchmark interpretation
+- `scripts/media-delivery-benchmark.mjs` measures repeated cold-request and warm-repeat full downloads and Range downloads, actual encoded response-body bytes, decoded bytes, compression ratio/savings, TTFB, median and p95 latency, cache status and client-visible egress MiB.
+- The benchmark is executed from the PostgreSQL-backed HTTP lifecycle test in CI. Its measured byte count is **not** billed Render/CDN egress: reconcile it against the provider's actual transfer metrics before claiming cost savings. A suspended production API and an unprovisioned R2 bucket prevent live production before/after measurements.
