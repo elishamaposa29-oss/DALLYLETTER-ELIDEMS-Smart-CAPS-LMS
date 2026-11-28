@@ -42,6 +42,7 @@ export function registerDirectMediaUploadRoutes(
     try {
       const binding = await resolveBinding(request);
       if (!binding) { response.status(403).json({ error: "You are not authorized to upload media to this resource." }); return; }
+      if (metadata.size > (binding.maxBytes ?? MAX_MEDIA_SIZE_BYTES)) { response.status(413).json({ error: "The selected file exceeds this upload route's size limit." }); return; }
       const issued = await issueMediaUploadTicket({
         userId: request.currentUser!.id, routeKey: binding.routeKey, targetType: binding.targetType,
         targetId: binding.targetId, mimeType: metadata.mimeType, maxBytes: Math.min(metadata.size, binding.maxBytes ?? MAX_MEDIA_SIZE_BYTES),
