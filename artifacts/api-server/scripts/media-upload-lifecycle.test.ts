@@ -139,10 +139,11 @@ test("every file-backed media route uses ticket persistence behind its existing 
     { file: "src/routes/assignments.ts", route: 'router.post("/submission-material", requireAuth', guard: 'req.currentUser?.role !== "student"' },
     { file: "src/routes/exercises.ts", route: 'router.post("/answer-media", requireAuth', guard: "requireAuth" },
     { file: "src/routes/exercises.ts", route: 'router.post("/question-media", requireAuth', guard: 'requireManagerPermissionIfManager("users.override.teacher")' },
-    { file: "src/routes/handRaises.ts", route: 'router.post("/raise-hand/with-media", requireAuth', guard: "requireAuth" },
+    { file: "src/routes/handRaises.ts", route: 'router.post("/raise-hand/with-media", requireAuth', guard: "public.enrollments" },
     { file: "src/routes/messages.ts", route: 'router.post("/messages/media", requireAuth', guard: "canAccessGroup" },
     { file: "src/routes/users.ts", route: 'router.post("/users/me/avatar", requireAuth', guard: "requireAuth" },
     { file: "src/routes/users.ts", route: 'router.post("/users/me/teacher-documents", requireAuth', guard: 'String(req.currentUser!.role).toLowerCase() !== "teacher"' },
+    { file: "src/routes/users.ts", route: 'router.post("/qualifications/:id/document", requireAuth', guard: "teacher-qualification" },
     { file: "src/routes/users.ts", route: 'router.post("/users/me/cover", requireAuth', guard: "requireAuth" },
   ];
   const contents = new Map<string, string>();
