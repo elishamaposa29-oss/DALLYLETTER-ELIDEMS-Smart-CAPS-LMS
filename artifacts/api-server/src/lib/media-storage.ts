@@ -142,6 +142,13 @@ export async function streamStoredMedia(storageKey: string, range?: string): Pro
   const size = Number(metadata.rows[0].size_bytes);
   const mimeType = String(metadata.rows[0].mime_type || "application/octet-stream");
   if (!Number.isSafeInteger(size) || size < 0) throw new Error("Stored media size is invalid");
+  if (size === 0) {
+    if (range) return new Response(null, { status: 416, headers: { "Content-Range": "bytes */0", "Accept-Ranges": "bytes" } });
+    return new Response(new Uint8Array(), {
+      status: 200,
+      headers: { "Content-Type": mimeType, "Accept-Ranges": "bytes", "Cache-Control": "private, no-store", "Content-Length": "0" },
+    });
+  }
 
   let start = 0;
   let end = size - 1;
