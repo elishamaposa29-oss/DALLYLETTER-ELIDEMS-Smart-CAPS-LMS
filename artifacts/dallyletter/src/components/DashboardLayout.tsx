@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { getApiUrl, useLogoutUser } from "@workspace/api-client-react";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import {
   BookOpen, Users, Video, MessageSquare, CreditCard, Bell, LogOut, Home, FileCheck2,
   Shield, Menu, GraduationCap, Settings, Sparkles, ClipboardList, Star, EllipsisVertical,
@@ -80,10 +81,8 @@ function ProfileImageUpload() {
       const ctx=canvas.getContext("2d"); if(!ctx) throw new Error("Image processing is unavailable"); ctx.drawImage(image,0,0,canvas.width,canvas.height);
       const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error("Image compression failed")),"image/jpeg",0.78));
       const token=localStorage.getItem("dallyletter_token");
-      const formData=new FormData(); formData.append("file",blob,"profile.jpg");
-      const response=await fetch(getApiUrl("/api/users/me/avatar"),{method:"POST",headers:token?{Authorization:`Bearer ${token}`}:{},body:formData});
-      const result=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(result.error || result.message || `Upload failed (HTTP ${response.status}). ${result.detail || "Check server media storage and retry."}`);
+      const profileFile=new File([blob],"profile.jpg",{type:"image/jpeg"});
+      await uploadRouteMedia(profileFile,token,"/api/users/me/avatar");
       window.location.reload();
     } catch(error) { setUploadError(error instanceof Error ? error.message : "Profile image upload failed. Check your connection and retry."); }
     finally { setBusy(false); if(inputRef.current) inputRef.current.value=""; }
