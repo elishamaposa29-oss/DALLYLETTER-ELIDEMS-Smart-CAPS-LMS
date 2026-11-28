@@ -1,4 +1,4 @@
-import test, { after } from "node:test";
+import test, { after, before } from "node:test";
 import express from "express";
 import lessonsRouter from "../src/routes/lessons";
 import assert from "node:assert/strict";
@@ -18,12 +18,20 @@ import {
   persistTicketedMediaUpload,
 } from "../src/lib/media-upload-tickets";
 import { ensureMediaDirectory, getMediaDirectory, removeStoredMedia } from "../src/lib/media-storage";
+import { ensureConnectSchema } from "../src/lib/ensureConnectSchema";
 import { authorizeTicketedMediaDelivery } from "../src/lib/media-delivery-access";
 
 const suffix = randomUUID();
 let userA = 0;
 let userB = 0;
 const storageKeys: string[] = [];
+
+before(async () => {
+  // CI provisions the canonical Drizzle schema, while these additive runtime
+  // tables are normally ensured during API startup. Mirror that startup here.
+  await ensureConnectSchema();
+  await ensureMediaUploadTicketSchema();
+});
 
 after(async () => {
   for (const key of storageKeys) await removeStoredMedia(key).catch(() => undefined);
@@ -33,7 +41,6 @@ after(async () => {
 });
 
 test("route-bound tickets reject cross-account, route, target and MIME replay", async () => {
-  await ensureMediaUploadTicketSchema();
   const a = await pool.query(
     "INSERT INTO users(email,password_hash,name,role) VALUES($1,'test-only-hash','Media Test A','student') RETURNING id",
     [`media-a-${suffix}@example.test`],
