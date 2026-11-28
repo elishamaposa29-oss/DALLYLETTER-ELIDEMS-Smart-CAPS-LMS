@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, type Dirent } from "node:fs";
 import { open, readdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { pool } from "@workspace/db";
@@ -160,7 +160,7 @@ export async function cleanupOrphanedMediaStagingFiles(
 ): Promise<{ scanned: number; deleted: number; failed: number }> {
   const safeGrace = Math.max(0, Math.min(graceMs, 30 * 24 * 60 * 60 * 1000));
   const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 1000);
-  let entries: Awaited<ReturnType<typeof readdir>>;
+  let entries: Dirent[];
   try {
     entries = await readdir(getMediaDirectory(), { withFileTypes: true });
   } catch (error) {
@@ -203,5 +203,10 @@ export async function cleanupExpiredMediaUploads(limit=200):Promise<{scanned:num
     try{await removeStoredMedia(String(row.storage_key));await pool.query("DELETE FROM media_upload_tickets WHERE id=$1 AND status='expired'",[row.id]);deleted++;}
     catch{failed++;}
   }
-  return {scanned:r.rows.length,deleted,failed};
+  const staging = await cleanupOrphanedMediaStagingFiles(24 * 60 * 60 * 1000, n);
+  return {
+    scanned: r.rows.length + staging.scanned,
+    deleted: deleted + staging.deleted,
+    failed: failed + staging.failed,
+  };
 }
