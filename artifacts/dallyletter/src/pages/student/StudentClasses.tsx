@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import { Link } from "wouter";
 import UserProfileLink from "@/components/UserProfileLink";
 import { useListClasses, useRaiseHand, getApiUrl } from "@workspace/api-client-react";
@@ -64,17 +65,9 @@ export default function StudentClasses() {
       setUploadingHandRaise(true);
       try {
         const token = localStorage.getItem("dallyletter_token");
-        const form = new FormData();
-        form.set("classId", String(selectedClassId));
-        form.set("question", question);
-        form.set("file", handRaiseMedia);
-        const response = await fetch(getApiUrl("/api/raise-hand/with-media"), {
-          method: "POST",
-          headers: token ? { Authorization: "Bearer " + token } : {},
-          body: form,
+        const result = await uploadRouteMedia<{ id: number }>(handRaiseMedia, token, "/api/raise-hand/with-media", {
+          classId: String(selectedClassId), question,
         });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error || "Failed to raise hand with attachment");
         toast({ title: "Hand raised", description: "Your teacher has been notified." });
         setRaisedHands(prev => ({ ...prev, [selectedClassId]: result.id }));
         setIsDialogOpen(false);

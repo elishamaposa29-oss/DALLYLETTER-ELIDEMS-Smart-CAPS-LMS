@@ -99,19 +99,51 @@ export default function TeacherLessons() {
     }
     setUploadingMedia(true);
     try {
-      const form = new FormData();
-      form.append("file", {
-        uri: asset.uri,
-        name: asset.fileName || (asset.type === "video" ? "lesson-video.mp4" : "lesson-image.jpg"),
-        type: asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg"),
-      } as any);
-      const response = await fetch(getApiUrl("/api/lessons/media"), {
-        method: "POST",
-        headers: token ? { Authorization: "Bearer " + token } : {},
-        body: form,
-      });
-      const uploaded = await response.json().catch(() => ({}));
-      if (!response.ok || !uploaded.mediaUrl) throw new Error(uploaded.error || "Media upload failed");
+      const fileName = asset.fileName || (asset.type === "video" ? "lesson-video.mp4" : "lesson-image.jpg");
+      const mimeType = asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg");
+      let uploaded: { mediaUrl?: string; error?: string } = {};
+      let directTicket: { ticket: string; uploadUrl: string; method: string; headers: Record<string, string> } | null = null;
+      try {
+        // Prefer a presigned direct PUT when the local URI can be read as a Blob.
+        // Any unsupported file URI or bucket CORS issue falls back to the stable API upload.
+        const localFile = await fetch(asset.uri);
+        if (!localFile.ok) throw new Error("Could not read the selected file.");
+        const blob = await localFile.blob();
+        const issuedResponse = await fetch(getApiUrl("/api/lessons/media/direct-upload-ticket"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+          body: JSON.stringify({ mimeType, size: blob.size }),
+        });
+        if (!issuedResponse.ok) throw new Error("Direct upload is unavailable.");
+        directTicket = await issuedResponse.json() as { ticket: string; uploadUrl: string; method: string; headers: Record<string, string> };
+        const stored = await fetch(directTicket.uploadUrl, { method: "PUT", headers: directTicket.headers || {}, body: blob });
+        if (!stored.ok) throw new Error("Direct object upload failed.");
+        const completed = await fetch(getApiUrl("/api/lessons/media/direct-upload-complete"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+          body: JSON.stringify({ ticket: directTicket.ticket, mimeType }),
+        });
+        if (!completed.ok) throw new Error("Direct upload verification failed.");
+        uploaded = await completed.json() as { mediaUrl?: string; error?: string };
+      } catch {
+        if (directTicket) {
+          await fetch(getApiUrl("/api/lessons/media/direct-upload-abort"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+            body: JSON.stringify({ ticket: directTicket.ticket, mimeType }),
+          }).catch(() => undefined);
+        }
+        const form = new FormData();
+        form.append("file", { uri: asset.uri, name: fileName, type: mimeType } as any);
+        const response = await fetch(getApiUrl("/api/lessons/media"), {
+          method: "POST",
+          headers: token ? { Authorization: "Bearer " + token } : {},
+          body: form,
+        });
+        uploaded = await response.json().catch(() => ({}));
+        if (!response.ok || !uploaded.mediaUrl) throw new Error(uploaded.error || "Media upload failed");
+      }
+      if (!uploaded.mediaUrl) throw new Error(uploaded.error || "Media upload failed");
       setMediaUrl(String(uploaded.mediaUrl));
       if (asset.type === "video") setType("video");
       else if (asset.type === "document") setType("mixed");

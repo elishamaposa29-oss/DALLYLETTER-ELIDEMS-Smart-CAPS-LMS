@@ -25,12 +25,13 @@ import {
   getMediaStats,
   isAllowedMediaType,
   MAX_MEDIA_SIZE_BYTES,
-  persistUploadedMedia,
   streamStoredMedia,
   removeStoredMedia,
 } from "../lib/media-storage";
 import { hasContentPermission } from "../lib/content-permissions";
-import { isObjectStorageConfigured } from "../lib/object-storage";
+import { createPresignedMediaUpload, createPresignedPrivateMediaRead, headObject, isObjectStorageConfigured, isPrivateObjectDeliveryEnabled } from "../lib/object-storage";
+import { abortDirectMediaUpload, completeDirectMediaUpload, issueMediaUploadTicket, persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { authorizeTicketedMediaDelivery } from "../lib/media-delivery-access";
 import { logger } from "../lib/logger";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
 
@@ -55,7 +56,18 @@ function validMediaShare(storageKey: string, token: unknown): boolean {
 }
 const mediaAccess = (req: Request, res: Response, next: NextFunction) => {
   if (validMediaShare(String(req.params.storageKey || ""), req.query.shareToken)) { next(); return; }
-  requireAuth(req, res, next);
+  requireAuth(req, res, () => {
+    const actor = req.currentUser;
+    if (!actor) return;
+    const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : "";
+    void authorizeTicketedMediaDelivery(storageKey, actor).then(allowed => {
+      if (!allowed) {
+        res.status(403).json({ error: "You are not authorized to access this media." });
+        return;
+      }
+      next();
+    }).catch(next);
+  });
 };
 
 
@@ -155,7 +167,7 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
       return;
     }
 
-    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+    persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: req.currentUser!.id, routeKey: "lessons.media", targetType: Number(req.query.groupId) > 0 ? "study-group-cover" : "lesson-media-library", targetId: String(Number(req.query.groupId) > 0 ? Number(req.query.groupId) : req.currentUser!.id), maxBytes: MAX_MEDIA_SIZE_BYTES } }).then(() => {
       res.status(201).json({
         mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
         storageKey: file.filename,
@@ -177,15 +189,94 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
   });
 });
 
+// Direct-to-object-storage upload flow for lesson media and study-group covers.
+// Existing multipart clients remain supported while web/mobile callers migrate.
+router.post("/lessons/media/direct-upload-ticket", requireAuth, requireManagerPermissionIfManager("lessons.create"), authorizeLessonMediaUpload, async (req,res):Promise<void> => {
+  if(!isObjectStorageConfigured()){res.status(503).json({error:"Direct media uploads require configured private object storage."});return;}
+  const mimeType=typeof req.body?.mimeType==="string"?req.body.mimeType.trim().toLowerCase():"";
+  const size=Number(req.body?.size);
+  const expectedSha256=typeof req.body?.sha256==="string"?req.body.sha256.trim().toLowerCase():undefined;
+  if(!isAllowedMediaType(mimeType)||!Number.isSafeInteger(size)||size<=0||size>MAX_MEDIA_SIZE_BYTES||
+    (expectedSha256!==undefined&&!/^[a-f0-9]{64}$/.test(expectedSha256))){
+    res.status(400).json({error:"A supported MIME type, exact file size and optional SHA-256 checksum are required."});return;
+  }
+  const groupId=Number(req.query.groupId);
+  const isGroupCover=Number.isInteger(groupId)&&groupId>0;
+  try{
+    const binding={userId:req.currentUser!.id,routeKey:"lessons.media",targetType:isGroupCover?"study-group-cover":"lesson-media-library",
+      targetId:String(isGroupCover?groupId:req.currentUser!.id),mimeType,maxBytes:size,expectedSha256};
+    const issued=await issueMediaUploadTicket(binding);
+    const signed=createPresignedMediaUpload(issued.storageKey,mimeType,300);
+    res.status(201).json({ticket:issued.ticket,storageKey:issued.storageKey,uploadUrl:signed.url,method:signed.method,
+      headers:signed.headers,expiresAt:issued.expiresAt,expectedSize:size});
+  }catch(error){
+    logger.error({error:error instanceof Error?{name:error.name,message:error.message.slice(0,300)}:"Unknown"}, "Direct media upload ticket issue failed");
+    res.status(503).json({error:"A direct upload ticket could not be issued. Please retry."});
+  }
+});
+
+router.post("/lessons/media/direct-upload-abort", requireAuth, requireManagerPermissionIfManager("lessons.create"), authorizeLessonMediaUpload, async (req,res):Promise<void> => {
+  const ticket=typeof req.body?.ticket==="string"?req.body.ticket:"";
+  const mimeType=typeof req.body?.mimeType==="string"?req.body.mimeType.trim().toLowerCase():"";
+  if(!ticket||ticket.length>256||!isAllowedMediaType(mimeType)){res.status(400).json({error:"A valid upload ticket and MIME type are required."});return;}
+  const groupId=Number(req.query.groupId);
+  const isGroupCover=Number.isInteger(groupId)&&groupId>0;
+  try{
+    const aborted=await abortDirectMediaUpload({ticket,userId:req.currentUser!.id,routeKey:"lessons.media",
+      targetType:isGroupCover?"study-group-cover":"lesson-media-library",
+      targetId:String(isGroupCover?groupId:req.currentUser!.id),mimeType});
+    res.status(aborted?200:204).json(aborted?{aborted:true}:{});
+  }catch(error){
+    logger.warn({userId:req.currentUser!.id,error:error instanceof Error?error.message.slice(0,300):"Unknown"},
+      "Direct media upload abort deferred to cleanup worker");
+    res.status(202).json({aborted:true,cleanupPending:true});
+  }
+});
+
+router.post("/lessons/media/direct-upload-complete", requireAuth, requireManagerPermissionIfManager("lessons.create"), authorizeLessonMediaUpload, async (req,res):Promise<void> => {
+  const ticket=typeof req.body?.ticket==="string"?req.body.ticket:"";
+  const mimeType=typeof req.body?.mimeType==="string"?req.body.mimeType.trim().toLowerCase():"";
+  if(!ticket||ticket.length>256||!isAllowedMediaType(mimeType)){res.status(400).json({error:"A valid upload ticket and MIME type are required."});return;}
+  const groupId=Number(req.query.groupId);
+  const isGroupCover=Number.isInteger(groupId)&&groupId>0;
+  try{
+    const completed=await completeDirectMediaUpload({ticket,userId:req.currentUser!.id,routeKey:"lessons.media",
+      targetType:isGroupCover?"study-group-cover":"lesson-media-library",
+      targetId:String(isGroupCover?groupId:req.currentUser!.id),mimeType});
+    res.status(201).json({mediaUrl:`/api/lessons/media/${completed.storageKey}?type=${encodeURIComponent(mimeType)}`,
+      storageKey:completed.storageKey,mimeType,size:completed.size,sha256:completed.sha256});
+  }catch(error){
+    logger.warn({userId:req.currentUser!.id,routeKey:"lessons.media",error:error instanceof Error?error.message.slice(0,300):"Unknown"},
+      "Direct media upload completion rejected");
+    res.status(400).json({error:"The uploaded object failed ticket, size, MIME or checksum verification. Restart the upload."});
+  }
+});
+
 router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): Promise<void> => {
   const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : "";
   if (!/^[a-f0-9-]{36}$/i.test(storageKey)) { res.status(400).json({ error: "Invalid media key" }); return; }
+  // Share links are an explicit public-access escape hatch. Never issue one
+  // for private submissions, chat attachments, profile media, teacher records,
+  // group covers, or any other ticketed object type.
+  const owner = await pool.query(
+    "SELECT user_id, route_key, target_type FROM media_upload_tickets WHERE storage_key = $1 AND status = 'consumed' ORDER BY consumed_at DESC LIMIT 1",
+    [storageKey],
+  );
+  const ticket = owner.rows[0] as { user_id: number; route_key: string; target_type: string } | undefined;
+  if (!ticket || ticket.route_key !== "lessons.media" || ticket.target_type !== "lesson-media-library") {
+    res.status(403).json({ error: "This media type cannot be shared publicly." });
+    return;
+  }
+  if (Number(ticket.user_id) !== Number(req.currentUser!.id) && !isOwnerRole(req.currentUser!.role)) {
+    res.status(403).json({ error: "Only the media uploader or platform owner can create a share link" });
+    return;
+  }
   try {
     const stored = await streamStoredMedia(storageKey);
     if (!stored) {
       try { await getMediaStats(storageKey); } catch { res.status(404).json({ error: "Media not found" }); return; }
     }
-    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30;
+    const expiresAt = Math.floor(Date.now() / 1000) + 15 * 60;
     res.setHeader("Cache-Control", "no-store");
     res.json({ shareToken: signMediaShare(storageKey, expiresAt), expiresAt });
   } catch (error) {
@@ -194,6 +285,8 @@ router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): P
 });
 
 router.get("/lessons/media/:storageKey", mediaAccess, async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
   const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : null;
   if (!storageKey) {
     res.status(400).json({ error: "Invalid media key" });
@@ -201,6 +294,23 @@ router.get("/lessons/media/:storageKey", mediaAccess, async (req, res): Promise<
   }
 
   try {
+    // Object-backed media is delivered directly from the private object store
+    // after the existing resource-aware authorization check above. The short
+    // lived URL is scoped to this exact object; Range is forwarded by the
+    // browser to the signed GET, so large video seeking does not traverse Render.
+    if (isPrivateObjectDeliveryEnabled()) {
+      const metadata = await headObject(storageKey);
+      if (metadata) {
+        const signed = createPresignedPrivateMediaRead(storageKey, 120);
+        res.status(307);
+        res.setHeader("Location", signed.url);
+        res.setHeader("Cache-Control", "private, no-store, max-age=0");
+        res.setHeader("Referrer-Policy", "no-referrer");
+        res.setHeader("Accept-Ranges", "bytes");
+        res.end();
+        return;
+      }
+    }
     const remote = await streamStoredMedia(storageKey, req.headers.range);
     if (remote) {
       res.status(remote.status);

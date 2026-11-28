@@ -1,5 +1,5 @@
 // Messages routes — group and private chat, including voice notes
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { eq, and, isNull, or, inArray, desc } from "drizzle-orm";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
@@ -11,8 +11,11 @@ import {
   SendMessageBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
+import { createPresignedPrivateMediaRead, headObject, isPrivateObjectDeliveryEnabled } from "../lib/object-storage";
+import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { registerDirectMediaUploadRoutes } from "../lib/media-direct-upload-routes";
 import { getAIProvider } from "../lib/ai-provider";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, persistUploadedMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
 const MAX_CHAT_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_BYTES;
 import { isOwnerRole, normalizeRole, canAccessManager } from "../lib/auth-middleware";
@@ -22,7 +25,7 @@ import { canModerateUser } from "../lib/role-access";
 
 const router: IRouter = Router();
 
-function isProfileOnlyTeacher(user: NonNullable<Express.Request["currentUser"]>): boolean {
+function isProfileOnlyTeacher(user: NonNullable<Request["currentUser"]>): boolean {
   return normalizeRole(user.role) === "teacher" &&
     ["draft","pending_review","rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? "").trim().toLowerCase());
 }
@@ -60,7 +63,7 @@ async function canAccessGroup(groupId: number, userId: number, role: string): Pr
   return Boolean(membership);
 }
 
-async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
+async function canMessageUser(sender: NonNullable<Request["currentUser"]>, recipientId: number): Promise<boolean> {
   if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === sender.id) return false;
   const [recipient] = await db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, isPrefect: usersTable.isPrefect, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
     .from(usersTable)
@@ -82,7 +85,7 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
   return true;
 }
 
-async function canViewPrivateConversation(user: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
+async function canViewPrivateConversation(user: NonNullable<Request["currentUser"]>, recipientId: number): Promise<boolean> {
   if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id) return false;
   if (isOwnerRole(user.role)) return true;
   const viewerRole = normalizeRole(user.role);
@@ -107,11 +110,69 @@ async function canViewPrivateConversation(user: NonNullable<Express.Request["cur
   return true;
 }
 
+/**
+ * Authorize the conversation before Multer accepts or writes any file bytes.
+ * The target is carried in the query string so authorization cannot be delayed
+ * until multipart fields happen to arrive after the file part.
+ */
+async function authorizeMessageMediaUpload(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const currentUser = req.currentUser;
+  if (!currentUser) { res.status(401).json({ error: "Authentication required" }); return; }
+  const groupRaw = req.query.groupId;
+  const recipientRaw = req.query.recipientId;
+  const groupId = groupRaw == null || groupRaw === "" ? null : Number(groupRaw);
+  const recipientId = recipientRaw == null || recipientRaw === "" ? null : Number(recipientRaw);
+  const validTarget = (groupId != null && recipientId == null && Number.isSafeInteger(groupId) && groupId > 0)
+    || (groupId == null && recipientId != null && Number.isSafeInteger(recipientId) && recipientId > 0);
+  if (!validTarget) { res.status(400).json({ error: "Provide exactly one valid groupId or recipientId query parameter." }); return; }
+  if (isProfileOnlyTeacher(currentUser) && groupId != null) {
+    res.status(403).json({ error: "Applicants may use private Profile Hub conversations only; group chat unlocks after teacher authorization." });
+    return;
+  }
+  const allowed = groupId != null
+    ? await canAccessGroup(groupId, currentUser.id, currentUser.role)
+    : await canMessageUser(currentUser, recipientId!);
+  if (!allowed) { res.status(403).json({ error: "You cannot upload media to this conversation" }); return; }
+  if (groupId != null) {
+    const [settings] = await db.select().from(groupSettingsTable).where(eq(groupSettingsTable.groupId, groupId));
+    const [control] = await db.select().from(groupMemberControlsTable).where(and(eq(groupMemberControlsTable.groupId, groupId), eq(groupMemberControlsTable.userId, currentUser.id)));
+    if (settings?.allowMedia === false || control?.mediaBlocked || control?.blocked || control?.suspended || control?.muted) {
+      res.status(403).json({ error: "Media uploads are disabled for you in this group" });
+      return;
+    }
+  }
+  next();
+}
+
+const authorizeDirectMessageMediaUpload = (req: Request, res: Response, next: NextFunction): void => {
+  void authorizeMessageMediaUpload(req, res, next).catch(next);
+};
+registerDirectMediaUploadRoutes(router, "/messages/media", [requireAuth, authorizeDirectMessageMediaUpload], async request => {
+  const groupRaw = request.query.groupId;
+  const recipientRaw = request.query.recipientId;
+  const groupId = groupRaw == null || groupRaw === "" ? null : Number(groupRaw);
+  const recipientId = recipientRaw == null || recipientRaw === "" ? null : Number(recipientRaw);
+  if (groupId != null && Number.isSafeInteger(groupId) && groupId > 0 && recipientId == null) {
+    return { routeKey: "messages.media", targetType: "group-conversation", targetId: String(groupId), maxBytes: MAX_CHAT_MEDIA_SIZE_BYTES };
+  }
+  if (recipientId != null && Number.isSafeInteger(recipientId) && recipientId > 0 && groupId == null) {
+    return { routeKey: "messages.media", targetType: "direct-conversation", targetId: String(recipientId), maxBytes: MAX_CHAT_MEDIA_SIZE_BYTES };
+  }
+  return null;
+});
+
 function messageMediaPath(storageKey: string): string {
   return `/api/messages/media/${storageKey}`;
 }
 
-router.post("/messages/media", requireAuth, (req, res): void => {
+router.post("/messages/media", requireAuth, (req, res, next): void => {
+  void authorizeMessageMediaUpload(req, res, (error?: unknown) => {
+    if (error) { next(error); return; }
+    uploadMessageMedia(req, res, next);
+  }).catch(next);
+});
+
+function uploadMessageMedia(req: Request, res: import("express").Response, next: NextFunction): void {
   voiceUpload.single("file")(req, res, (error) => {
     void (async () => {
       if (error || !req.file) {
@@ -119,8 +180,10 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         return;
       }
 
-      const groupId = req.body?.groupId == null || req.body.groupId === "" ? null : Number(req.body.groupId);
-      const recipientId = req.body?.recipientId == null || req.body.recipientId === "" ? null : Number(req.body.recipientId);
+      const groupValue = req.body?.groupId ?? req.query.groupId;
+      const recipientValue = req.body?.recipientId ?? req.query.recipientId;
+      const groupId = groupValue == null || groupValue === "" ? null : Number(groupValue);
+      const recipientId = recipientValue == null || recipientValue === "" ? null : Number(recipientValue);
       const currentUser = req.currentUser!;
       if (isProfileOnlyTeacher(currentUser) && groupId != null) {
         await removeStoredMedia(req.file.filename);
@@ -147,7 +210,7 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         }
       }
 
-      await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path);
+      await persistTicketedMediaUpload({ localPath: req.file.path, storageKey: req.file.filename, mimeType: req.file.mimetype, binding: { userId: currentUser.id, routeKey: "messages.media", targetType: groupId != null ? "group-conversation" : "direct-conversation", targetId: String(groupId ?? recipientId), maxBytes: MAX_MEDIA_SIZE_BYTES } });
       res.status(201).json({
         mediaUrl: messageMediaPath(req.file.filename) + "?type=" + encodeURIComponent(req.file.mimetype),
         storageKey: req.file.filename,
@@ -158,9 +221,11 @@ router.post("/messages/media", requireAuth, (req, res): void => {
       res.status(500).json({ error: "Media upload failed" });
     });
   });
-});
+}
 
 router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
   const storageKey = String(req.params.storageKey);
   if (!/^[a-f0-9-]{36}$/i.test(storageKey)) { res.status(400).json({ error: "Invalid media key" }); return; }
   const requestedType = typeof req.query.type === "string" ? req.query.type : "";
@@ -176,6 +241,22 @@ router.get("/messages/media/:storageKey", requireAuth, async (req, res): Promise
     : message.recipientId != null && (isOwnerRole(user.role) || ((message.recipientId === user.id || message.senderId === user.id) && await canViewPrivateConversation(user, message.senderId === user.id ? message.recipientId : message.senderId)));
   if (!allowed) { res.status(403).json({ error: "You cannot access this media" }); return; }
   try {
+    // Re-check conversation membership on every request, then send object-backed
+    // media through a short-lived, object-scoped GET. The browser retains its
+    // Range header on the redirect, avoiding Render as the video/voice proxy.
+    if (isPrivateObjectDeliveryEnabled()) {
+      const metadata = await headObject(storageKey);
+      if (metadata) {
+        const signed = createPresignedPrivateMediaRead(storageKey, 120);
+        res.status(307);
+        res.setHeader("Location", signed.url);
+        res.setHeader("Cache-Control", "private, no-store, max-age=0");
+        res.setHeader("Referrer-Policy", "no-referrer");
+        res.setHeader("Accept-Ranges", "bytes");
+        res.end();
+        return;
+      }
+    }
     const remote = await streamStoredMedia(storageKey, req.headers.range);
     if (remote) {
       res.status(remote.status);

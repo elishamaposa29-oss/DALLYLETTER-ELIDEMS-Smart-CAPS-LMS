@@ -1,6 +1,24 @@
 import { createHash, createHmac } from "node:crypto";
 import { createReadStream } from "node:fs";
 
+export interface MediaObjectStorageProvider {
+  readonly name: string;
+  readonly supportsByteRanges: boolean;
+  readonly supportsStreamingUpload: boolean;
+  put(storageKey: string, mimeType: string, localPath: string): Promise<void>;
+  get(storageKey: string, range?: string): Promise<Response | null>;
+  delete(storageKey: string): Promise<void>;
+}
+
+export const s3CompatibleMediaProvider = {
+  name: "s3-compatible",
+  supportsByteRanges: true,
+  supportsStreamingUpload: true,
+  put: putObject,
+  get: getObject,
+  delete: deleteObject,
+} satisfies MediaObjectStorageProvider;
+
 type StorageConfig = {
   endpoint: string;
   bucket: string;
@@ -26,6 +44,14 @@ function config(): StorageConfig | null {
 
 export function isObjectStorageConfigured(): boolean {
   return config() !== null;
+}
+
+/**
+ * Signed object reads are opt-in until the bucket's CORS policy and private
+ * delivery behavior have been verified for every supported browser client.
+ */
+export function isPrivateObjectDeliveryEnabled(): boolean {
+  return config() !== null && process.env.MEDIA_S3_SIGNED_READS_ENABLED === "true";
 }
 
 function sha256(value: Buffer | string): string {
@@ -131,10 +157,109 @@ export async function getObject(storageKey: string, range?: string): Promise<Res
   return response;
 }
 
+export async function headObject(storageKey: string): Promise<{ size: number; mimeType: string | null } | null> {
+  const cfg = config();
+  if (!cfg) return null;
+  const signed = signRequest(cfg, "HEAD", `media/${storageKey}`);
+  const response = await fetch(signed.url, { method: "HEAD", headers: signed.headers });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Object storage metadata read failed: HTTP ${response.status}`);
+  const rawSize = response.headers.get("content-length");
+  const size = rawSize && /^\d+$/.test(rawSize) ? Number(rawSize) : NaN;
+  if (!Number.isSafeInteger(size) || size < 0) throw new Error("Object storage returned invalid content length");
+  return { size, mimeType: response.headers.get("content-type") };
+}
+
 export async function deleteObject(storageKey: string): Promise<void> {
   const cfg = config();
   if (!cfg) return;
   const signed = signRequest(cfg, "DELETE", `media/${storageKey}`, {}, sha256(""));
   const response = await fetch(signed.url, { method: "DELETE", headers: signed.headers });
   if (!response.ok && response.status !== 404) throw new Error(`Object storage delete failed: HTTP ${response.status}`);
+}
+
+
+export interface PresignedMediaRequest {
+  url: string;
+  method: "PUT" | "GET";
+  headers: Record<string, string>;
+  expiresAt: number;
+}
+
+function presignObject(
+  cfg: StorageConfig,
+  method: "PUT" | "GET",
+  key: string,
+  expiresInSeconds: number,
+  contentType?: string,
+): PresignedMediaRequest {
+  if (!Number.isInteger(expiresInSeconds) || expiresInSeconds < 1 || expiresInSeconds > 900) {
+    throw new Error("Presigned media URL expiry must be between 1 and 900 seconds");
+  }
+  const url = objectUrl(cfg, key);
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const shortDate = amzDate.slice(0, 8);
+  const scope = shortDate + "/" + cfg.region + "/s3/aws4_request";
+  const signedHeaders = contentType && method === "PUT" ? "content-type;host" : "host";
+  const query: Record<string, string> = {
+    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+    "X-Amz-Credential": cfg.accessKeyId + "/" + scope,
+    "X-Amz-Date": amzDate,
+    "X-Amz-Expires": String(expiresInSeconds),
+    "X-Amz-SignedHeaders": signedHeaders,
+  };
+  const canonicalQuery = Object.entries(query)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v))
+    .join("&");
+  const canonicalHeaders = contentType && method === "PUT"
+    ? "content-type:" + contentType.trim().replace(/\s+/g, " ") + "\nhost:" + url.host + "\n"
+    : "host:" + url.host + "\n";
+  const canonicalRequest = [method, url.pathname || "/", canonicalQuery, canonicalHeaders, signedHeaders, "UNSIGNED-PAYLOAD"].join("\n");
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("\n");
+  const kDate = hmac("AWS4" + cfg.secretAccessKey, shortDate);
+  const kRegion = hmac(kDate, cfg.region);
+  const kService = hmac(kRegion, "s3");
+  const kSigning = hmac(kService, "aws4_request");
+  const signature = createHmac("sha256", kSigning).update(stringToSign).digest("hex");
+  url.search = canonicalQuery + "&X-Amz-Signature=" + signature;
+  return {
+    url: url.toString(),
+    method,
+    headers: contentType && method === "PUT" ? { "Content-Type": contentType } : {},
+    expiresAt: Math.floor(now.getTime() / 1000) + expiresInSeconds,
+  };
+}
+
+export function createPresignedMediaUpload(storageKey: string, mimeType: string, expiresInSeconds = 300): PresignedMediaRequest {
+  const cfg = config();
+  if (!cfg) throw new Error("S3-compatible media storage is not configured");
+  return presignObject(cfg, "PUT", "media/" + storageKey, expiresInSeconds, mimeType);
+}
+
+export function createPresignedPrivateMediaRead(storageKey: string, expiresInSeconds = 120): PresignedMediaRequest {
+  const cfg = config();
+  if (!cfg) throw new Error("S3-compatible media storage is not configured");
+  if (!/^[a-f0-9-]{36}$/i.test(storageKey)) throw new Error("Invalid private media key");
+  const edgeBase = process.env.MEDIA_EDGE_BASE_URL?.trim();
+  const edgeSecret = process.env.MEDIA_EDGE_SIGNING_SECRET;
+  if (edgeBase && edgeSecret) {
+    if (!Number.isInteger(expiresInSeconds) || expiresInSeconds < 1 || expiresInSeconds > 300) {
+      throw new Error("Private edge URL expiry must be between 1 and 300 seconds");
+    }
+    const base = new URL(edgeBase);
+    if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash) {
+      throw new Error("Private media edge URL must be a clean HTTPS origin or base path");
+    }
+    const expiresAt = Math.floor(Date.now() / 1000) + expiresInSeconds;
+    const signature = createHmac("sha256", edgeSecret)
+      .update(storageKey + "\n" + String(expiresAt), "utf8")
+      .digest("hex");
+    const url = new URL("/media/" + storageKey, base);
+    url.searchParams.set("expires", String(expiresAt));
+    url.searchParams.set("sig", signature);
+    return { url: url.toString(), method: "GET", headers: {}, expiresAt };
+  }
+  return presignObject(cfg, "GET", "media/" + storageKey, Math.min(expiresInSeconds, 900));
 }

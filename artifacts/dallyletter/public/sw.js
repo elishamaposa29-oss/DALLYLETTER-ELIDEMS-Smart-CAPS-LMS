@@ -1,8 +1,9 @@
-const SHELL_CACHE = "dallyletter-shell-v4";
-const ASSET_CACHE = "dallyletter-assets-v4";
+const SHELL_CACHE = "dallyletter-shell-v6";
+const ASSET_CACHE = "dallyletter-assets-v6";
 const SHELL = ["/", "/manifest.json", "/favicon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
-const MAX_ASSETS = 30;
+const MAX_ASSETS = 48;
 const MAX_ASSET_BYTES = 2 * 1024 * 1024;
+const MAX_CACHE_BYTES = 12 * 1024 * 1024;
 
 self.addEventListener("install", event => {
   event.waitUntil(
@@ -21,7 +22,9 @@ self.addEventListener("activate", event => {
 });
 
 async function cacheAsset(request, response) {
-  if (!response.ok || response.type !== "basic") return;
+  if (!response.ok || response.type !== "basic" || request.headers.has("range")) return;
+  const policy = response.headers.get("cache-control") || "";
+  if (/\b(private|no-store|no-cache)\b/i.test(policy)) return;
   const rawSize = response.headers.get("content-length");
   if (!rawSize) return;
   const size = Number(rawSize);
@@ -30,8 +33,19 @@ async function cacheAsset(request, response) {
     const cache = await caches.open(ASSET_CACHE);
     await cache.put(request, response.clone());
     const keys = await cache.keys();
-    if (keys.length > MAX_ASSETS) {
-      await Promise.all(keys.slice(0, keys.length - MAX_ASSETS).map(key => cache.delete(key)));
+    let totalBytes = 0;
+    const entries = [];
+    for (const key of keys) {
+      const item = await cache.match(key);
+      const bytes = Number(item?.headers.get("content-length") || 0);
+      entries.push({ key, bytes });
+      totalBytes += Number.isFinite(bytes) ? bytes : 0;
+    }
+    while (entries.length > MAX_ASSETS || totalBytes > MAX_CACHE_BYTES) {
+      const oldest = entries.shift();
+      if (!oldest) break;
+      await cache.delete(oldest.key);
+      totalBytes -= oldest.bytes;
     }
   } catch { /* Quota/private-mode failures must not break online loading. */ }
 }
@@ -42,11 +56,13 @@ self.addEventListener("fetch", event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   // Never cache API responses, uploads, or private media.
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/media/")) return;
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/media/") || url.pathname.startsWith("/uploads/") || url.pathname.startsWith("/auth/")) return;
 
   if (request.mode === "navigate" || request.destination === "document") {
     event.respondWith(fetch(request).then(response => {
-      if (response.ok && response.type === "basic") {
+      const policy = response.headers.get("cache-control") || "";
+      // Never store authenticated or non-cacheable SPA route documents under the shared root key.
+      if (url.pathname === "/" && response.ok && response.type === "basic" && !/\\b(private|no-store|no-cache)\\b/i.test(policy)) {
         caches.open(SHELL_CACHE).then(cache => cache.put("/", response.clone())).catch(() => undefined);
       }
       return response;
@@ -55,7 +71,7 @@ self.addEventListener("fetch", event => {
   }
 
   const isAsset = request.destination === "script" || request.destination === "style" ||
-    request.destination === "font" || url.pathname.startsWith("/assets/");
+    request.destination === "font" || request.destination === "image" || url.pathname.startsWith("/assets/") || url.pathname.startsWith("/social/") || url.pathname.startsWith("/founder/") || url.pathname.startsWith("/icons/") || url.pathname === "/favicon.svg";
   if (!isAsset) return;
   event.respondWith((async () => {
     const cache = await caches.open(ASSET_CACHE);

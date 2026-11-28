@@ -4,6 +4,7 @@ import { StudyGroupPollPanel } from "@/components/StudyGroupPollPanel";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiUrl } from "@workspace/api-client-react";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import { getListNotificationsQueryKey, useListNotifications, useMarkNotificationRead, useListStudyGroups } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
@@ -584,9 +585,8 @@ export default function FeatureHub() {
     }
     setUploading(true);
     try {
-      const form = new FormData();
-      form.append("file", { uri: asset.uri, name: asset.fileName || "lesson-media", type: asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg") } as any);
-      const result = await request("/api/assignments/material", { method: "POST", body: form });
+      const mimeType = asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg");
+      const result = await uploadRouteMedia(asset.uri, asset.fileName || "lesson-media", mimeType, token, "/api/assignments/material", { fileName: asset.fileName || "lesson-media" });
       if (!result.attachmentUrl) throw new Error("Upload completed without an attachment link");
       setAttachmentUrl(result.attachmentUrl);
       Alert.alert("Uploaded", "Media is ready to attach to your assignment.");
@@ -680,9 +680,7 @@ export default function FeatureHub() {
     const asset = picked.assets[0];
     setUploadingAnswerId(questionId);
     try {
-      const form = new FormData();
-      form.append("file", { uri: asset.uri, name: asset.fileName || "exercise-answer", type: asset.mimeType || (asset.type === "video" ? "video/mp4" : "image/jpeg") } as any);
-      const result = await request("/api/exercises/answer-media", { method: "POST", body: form });
+      const result = await uploadRouteMedia(asset.uri, asset.fileName || "exercise-answer", asset.mimeType || (asset.type === "video" ? "video/mp4" : "image/jpeg"), token, "/api/exercises/answer-media");
       if (!result.mediaUrl) throw new Error("Upload completed without a media link");
       setAnswers(old => ({ ...old, [String(questionId)]: { ...(old[String(questionId)] || {}), mediaReference: result.mediaUrl } }));
     } catch (e) { Alert.alert("Answer upload failed", e instanceof Error ? e.message : "Please retry."); }
@@ -854,7 +852,7 @@ export default function FeatureHub() {
       asset = picked.assets[0];
     }
     setPrivateMediaBusy(true);
-    try { const form=new FormData(); form.append("recipientId",String(privateRecipient.id)); form.append("file",{uri:asset.uri,name:asset.fileName||"private-learning-media",type:asset.mimeType||(asset.type==="video"?"video/mp4":"image/jpeg")} as any); const uploaded=await request("/api/messages/media",{method:"POST",body:form}); if(!uploaded.mediaUrl)throw new Error("Upload did not return a media URL."); await request("/api/messages",{method:"POST",body:JSON.stringify({recipientId:Number(privateRecipient.id),content:asset.fileName||"Shared learning media",type:"media",mediaUrl:uploaded.mediaUrl})}); const messages=await request("/api/messages?recipientId="+encodeURIComponent(String(privateRecipient.id))); setPrivateMessages(Array.isArray(messages)?messages:[]); }
+    try { const uploaded=await uploadRouteMedia(asset.uri,asset.fileName||"private-learning-media",asset.mimeType||(asset.type==="video"?"video/mp4":"image/jpeg"),token,"/api/messages/media?recipientId="+encodeURIComponent(String(privateRecipient.id))); if(!uploaded.mediaUrl)throw new Error("Upload did not return a media URL."); await request("/api/messages",{method:"POST",body:JSON.stringify({recipientId:Number(privateRecipient.id),content:asset.fileName||"Shared learning media",type:"media",mediaUrl:uploaded.mediaUrl})}); const messages=await request("/api/messages?recipientId="+encodeURIComponent(String(privateRecipient.id))); setPrivateMessages(Array.isArray(messages)?messages:[]); }
     catch(e){Alert.alert("Media not sent",e instanceof Error?e.message:"Reconnect and retry.");}
     finally{setPrivateMediaBusy(false);}
   };
@@ -863,10 +861,7 @@ export default function FeatureHub() {
     if (!privateRecipient || privateMediaBusy) throw new Error("Choose a conversation before recording a voice message.");
     setPrivateMediaBusy(true);
     try {
-      const form = new FormData();
-      form.append("recipientId", String(privateRecipient.id));
-      form.append("file", { uri: file.uri, name: file.fileName, type: file.mimeType } as any);
-      const uploaded = await request("/api/messages/media", { method: "POST", body: form });
+      const uploaded = await uploadRouteMedia(file.uri, file.fileName, file.mimeType, token, "/api/messages/media?recipientId=" + encodeURIComponent(String(privateRecipient.id)));
       if (!uploaded.mediaUrl) throw new Error("Voice upload did not return a media URL.");
       await request("/api/messages", { method: "POST", body: JSON.stringify({ recipientId: Number(privateRecipient.id), content: "Voice message", type: "voice", mediaUrl: uploaded.mediaUrl }) });
       const messages = await request("/api/messages?recipientId=" + encodeURIComponent(String(privateRecipient.id)));
@@ -1034,10 +1029,8 @@ export default function FeatureHub() {
     }
     setChatMediaBusy(true);
     try {
-      const form = new FormData();
-      form.append("file", { uri: asset.uri, name: asset.fileName || "group-media", type: asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg") } as any);
-      form.append("groupId", String(selectedChatGroup.id));
-      const uploaded = await request("/api/messages/media", { method: "POST", body: form });
+      const mimeType = asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg");
+      const uploaded = await uploadRouteMedia(asset.uri, asset.fileName || "group-media", mimeType, token, "/api/messages/media?groupId=" + encodeURIComponent(String(selectedChatGroup.id)));
       if (!uploaded?.mediaUrl) throw new Error("Upload completed without a media URL.");
       await request("/api/messages", { method: "POST", body: JSON.stringify({ content: asset.fileName || "Learning media", type: "media", groupId: selectedChatGroup.id, mediaUrl: uploaded.mediaUrl }) });
       await refreshGroupMessages(selectedChatGroup.id);
@@ -1050,10 +1043,7 @@ export default function FeatureHub() {
     if (groupSettings && groupSettings.allowMedia === false) throw new Error("Media and voice messages are disabled in this group.");
     setChatMediaBusy(true);
     try {
-      const form = new FormData();
-      form.append("groupId", String(selectedChatGroup.id));
-      form.append("file", { uri: file.uri, name: file.fileName, type: file.mimeType } as any);
-      const uploaded = await request("/api/messages/media", { method: "POST", body: form });
+      const uploaded = await uploadRouteMedia(file.uri, file.fileName, file.mimeType, token, "/api/messages/media?groupId=" + encodeURIComponent(String(selectedChatGroup.id)));
       if (!uploaded?.mediaUrl) throw new Error("Voice upload did not return a media URL.");
       await request("/api/messages", { method: "POST", body: JSON.stringify({ content: "Voice message", type: "voice", groupId: selectedChatGroup.id, mediaUrl: uploaded.mediaUrl }) });
       await refreshGroupMessages(selectedChatGroup.id);
@@ -1192,9 +1182,8 @@ export default function FeatureHub() {
     }
     setUploading(true);
     try {
-      const form = new FormData();
-      form.append("file", { uri: asset.uri, name: asset.fileName || "submission-media", type: asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg") } as any);
-      const result = await request("/api/assignments/submission-material", { method: "POST", body: form });
+      const mimeType = asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg");
+      const result = await uploadRouteMedia(asset.uri, asset.fileName || "submission-media", mimeType, token, "/api/assignments/submission-material", { fileName: asset.fileName || "submission-media" });
       setAttachmentUrl(result.attachmentUrl || result.fileUrl || "");
       if (!result.attachmentUrl && !result.fileUrl) throw new Error("Upload completed without an attachment link");
     } catch (e) { Alert.alert("Upload failed", e instanceof Error ? e.message : "Retry."); }

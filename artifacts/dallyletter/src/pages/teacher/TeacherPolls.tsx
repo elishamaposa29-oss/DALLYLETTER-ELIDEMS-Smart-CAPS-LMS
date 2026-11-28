@@ -12,6 +12,7 @@ import { Loader2, Plus, Play, Square, Trash2, BarChart3, Sparkles, ClipboardList
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AuthenticatedMedia } from "@/components/AuthenticatedMedia";
+import { uploadLessonMedia } from "@/lib/mediaUpload";
 
 interface Poll { id: number; title: string; type: string; grade: string | null; subject: string | null; mode: string; status: string; createdAt: string; }
 interface PollResults { submissions: { studentName: string; score: number; totalQuestions: number }[]; total: number; avgScore: number; }
@@ -45,10 +46,8 @@ export default function TeacherPolls() {
   useEffect(() => { load(); }, []);
 
   async function uploadQuestionImage(index:number,file:File) {
-    const body=new FormData();body.append("file",file,file.name);
-    const r=await fetch(getApiUrl("/api/lessons/media"),{method:"POST",headers:{Authorization:`Bearer ${token()}`},body});
-    const d=await r.json().catch(()=>null);if(!r.ok||!d?.mediaUrl)throw new Error(d?.error||"Image upload failed");
-    setNewQuestions(qs=>qs.map((q,i)=>i===index?{...q,imageUrl:d.mediaUrl}:q));
+    const uploaded = await uploadLessonMedia(file, token());
+    setNewQuestions(qs=>qs.map((q,i)=>i===index?{...q,imageUrl:uploaded.mediaUrl}:q));
   }
 
   async function handleCreate() {

@@ -12,7 +12,9 @@ import { getAIProvider } from "../lib/ai-provider";
 import { isObjectStorageConfigured } from "../lib/object-storage";
 import { logger } from "../lib/logger";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { registerDirectMediaUploadRoutes } from "../lib/media-direct-upload-routes";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
 const materialUpload = multer({
@@ -32,6 +34,30 @@ async function canManagerAccessTeacherRecord(user: NonNullable<Express.Request["
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, teacherId));
   return Boolean(target && canModerateUser(user, target));
 }
+registerDirectMediaUploadRoutes(router, "/material", [requireAuth], async request => {
+  const actor = request.currentUser!;
+  if (!canManageAcademicContent(actor) || (canAccessManager(actor) && !isOwnerRole(actor.role))) return null;
+  return { routeKey: "assignments.material", targetType: "teacher-material-library", targetId: String(actor.id), maxBytes: MAX_MEDIA_SIZE_BYTES };
+}, {
+  onCompleted: async (request, uploaded) => ({
+    attachmentUrl: `/api/lessons/media/${uploaded.storageKey}?type=${encodeURIComponent(String(request.body.mimeType))}`,
+    fileName: typeof request.body.fileName === "string" ? request.body.fileName.slice(0, 255) : "assignment-material",
+    mimeType: String(request.body.mimeType), size: uploaded.size,
+  }),
+});
+
+registerDirectMediaUploadRoutes(router, "/submission-material", [requireAuth], async request => {
+  const actor = request.currentUser!;
+  if (actor.role !== "student") return null;
+  return { routeKey: "assignments.submission-material", targetType: "learner-submission-draft", targetId: String(actor.id), maxBytes: MAX_MEDIA_SIZE_BYTES };
+}, {
+  onCompleted: async (request, uploaded) => ({
+    attachmentUrl: `/api/lessons/media/${uploaded.storageKey}?type=${encodeURIComponent(String(request.body.mimeType))}`,
+    fileName: typeof request.body.fileName === "string" ? request.body.fileName.slice(0, 255) : "submission-material",
+    mimeType: String(request.body.mimeType), size: uploaded.size,
+  }),
+});
+
 function normalizeGrade(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -57,12 +83,18 @@ function parseTotalMarks(value: unknown): number | null {
 }
 
 router.post("/material", requireAuth, (req, res): void => {
-  if (!canManageAcademicContent(req.currentUser!)) { res.status(403).json({ error: "Academic staff access required" }); return; }
+  const actor = req.currentUser!;
+  // Match assignment creation policy: only teachers and the platform Owner
+  // may publish reference materials. Manager access requires a separate
+  // explicit workflow and must not be inferred from the broad staff role.
+  if (!canManageAcademicContent(actor) || (canAccessManager(actor) && !isOwnerRole(actor.role))) {
+    res.status(403).json({ error: "Teacher or platform Owner access required" }); return;
+  }
   materialUpload.single("file")(req, res, (error) => {
     if (error) { res.status(400).json({ error: "A supported material file up to 250 MB is required" }); return; }
     const file = req.file;
     if (!file) { res.status(400).json({ error: "A supported material file is required" }); return; }
-    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
+    persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: req.currentUser!.id, routeKey: "assignments.material", targetType: "teacher-material-library", targetId: String(req.currentUser!.id), maxBytes: MAX_MEDIA_SIZE_BYTES } }).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
       logger.error({
         error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
         persistentStorageConfigured: isObjectStorageConfigured(),
@@ -83,7 +115,7 @@ router.post("/submission-material", requireAuth, (req, res): void => {
     if (error) { res.status(400).json({ error: "A supported submission file up to 250 MB is required" }); return; }
     const file = req.file;
     if (!file) { res.status(400).json({ error: "A supported submission file is required" }); return; }
-    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
+    persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: req.currentUser!.id, routeKey: "assignments.submission-material", targetType: "learner-submission-draft", targetId: String(req.currentUser!.id), maxBytes: MAX_MEDIA_SIZE_BYTES } }).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
       logger.error({
         error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
         persistentStorageConfigured: isObjectStorageConfigured(),

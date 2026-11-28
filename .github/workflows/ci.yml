@@ -35,12 +35,25 @@ jobs:
               per_page: 100
             });
             const active = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']);
+            // Only supersede an older run when that same workflow has also
+            // been triggered for the current head. Path-filtered workflows
+            // (especially the expensive Android APK build) must survive
+            // docs-only commits that do not schedule a replacement run.
+            const currentHeadWorkflows = new Set(data.workflow_runs
+              .filter(run =>
+                run.event === 'pull_request' &&
+                run.head_branch === branch &&
+                run.head_sha === headSha &&
+                run.status !== 'cancelled'
+              )
+              .map(run => run.name));
             const obsolete = data.workflow_runs.filter(run =>
               run.id !== context.runId &&
               run.event === 'pull_request' &&
               run.head_branch === branch &&
               active.has(run.status) &&
-              run.head_sha !== headSha
+              run.head_sha !== headSha &&
+              currentHeadWorkflows.has(run.name)
             );
             for (const run of obsolete) {
               try {

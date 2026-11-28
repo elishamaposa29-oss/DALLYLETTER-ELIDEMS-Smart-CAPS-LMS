@@ -1,6 +1,10 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import crypto from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, unlink } from "node:fs/promises";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import os from "node:os";
+import path from "node:path";
 import { eq, notInArray } from "drizzle-orm";
 import multer from "multer";
 import { db, usersTable, classesTable, notificationsTable, pool } from "@workspace/db";
@@ -10,7 +14,10 @@ import {
   PromoteUserParams, PromoteUserBody,
 } from "@workspace/api-zod";
 import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, persistUploadedMedia, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
+import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { registerDirectMediaUploadRoutes } from "../lib/media-direct-upload-routes";
+import { createPresignedPrivateMediaRead, headObject, isPrivateObjectDeliveryEnabled } from "../lib/object-storage";
 import { canReadPrivateProfileByRole, serializePublicProfile, maskPayoutDestination } from "../lib/profile-access-policy";
 import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
@@ -392,6 +399,25 @@ const avatarUpload = multer({
   fileFilter: (_req, file, callback) => callback(null, ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)),
 });
 
+registerDirectMediaUploadRoutes(router, "/users/me/avatar", [requireAuth], async request => {
+  const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+  if (!["image/jpeg","image/png","image/webp"].includes(mimeType)) return null;
+  return { routeKey: "users.me.avatar", targetType: "user-avatar", targetId: String(request.currentUser!.id), maxBytes: 8 * 1024 * 1024 };
+}, {
+  onCompleted: async (_request, uploaded) => {
+    const actor = _request.currentUser!;
+    const [before] = await db.select({ avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, actor.id));
+    const avatarUrl = "/api/lessons/media/" + uploaded.storageKey + "?type=" + _request.body.mimeType;
+    try {
+      const [user] = await db.update(usersTable).set({ avatarUrl }).where(eq(usersTable.id, actor.id)).returning(safeUserFields);
+      if (!user) throw new Error("User not found");
+      const oldKey = typeof before?.avatarUrl === "string" ? before.avatarUrl.match(/^\/api\/lessons\/media\/([a-f0-9-]{36})\?type=image\/(?:jpeg|png|webp)$/i)?.[1] : null;
+      if (oldKey && oldKey !== uploaded.storageKey) await removeStoredMedia(oldKey).catch(() => undefined);
+      return { ...user, createdAt: user.createdAt.toISOString() };
+    } catch (error) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw error; }
+  },
+});
+
 router.post("/users/me/avatar", requireAuth, (req, res, next): void => {
   avatarUpload.single("file")(req, res, error => {
     void (async () => {
@@ -402,7 +428,7 @@ router.post("/users/me/avatar", requireAuth, (req, res, next): void => {
       const actor = req.currentUser!;
       try {
         const [before] = await db.select({ avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, actor.id));
-        await persistUploadedMedia(file.filename, file.mimetype, file.path);
+        await persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: actor.id, routeKey: "users.me.avatar", targetType: "user-avatar", targetId: String(actor.id), maxBytes: 8 * 1024 * 1024 } });
         const avatarUrl = "/api/lessons/media/" + file.filename + "?type=" + file.mimetype;
         const [user] = await db.update(usersTable).set({ avatarUrl }).where(eq(usersTable.id, actor.id)).returning(safeUserFields);
         if (!user) { await removeStoredMedia(file.filename); res.status(404).json({ error: "User not found" }); return; }
@@ -433,6 +459,26 @@ async function ensureProfileCoverSchema(): Promise<void> {
   await pool.query("CREATE TABLE IF NOT EXISTS user_profile_covers (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, media_url text NOT NULL, media_type text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())");
 }
 
+registerDirectMediaUploadRoutes(router, "/users/me/cover", [requireAuth], async request => {
+  const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+  if (!["image/jpeg","image/png","image/webp","video/mp4","video/webm","video/quicktime"].includes(mimeType)) return null;
+  return { routeKey: "users.me.cover", targetType: "user-cover", targetId: String(request.currentUser!.id), maxBytes: 50 * 1024 * 1024 };
+}, {
+  onCompleted: async (_request, uploaded) => {
+    const actor = _request.currentUser!;
+    const mimeType = String(_request.body.mimeType);
+    const mediaUrl = "/api/lessons/media/" + uploaded.storageKey + "?type=" + mimeType;
+    await ensureProfileCoverSchema();
+    const prior = await pool.query("SELECT media_url FROM user_profile_covers WHERE user_id=$1", [actor.id]);
+    try {
+      await pool.query("INSERT INTO user_profile_covers(user_id,media_url,media_type,updated_at) VALUES($1,$2,$3,now()) ON CONFLICT(user_id) DO UPDATE SET media_url=EXCLUDED.media_url,media_type=EXCLUDED.media_type,updated_at=now()", [actor.id, mediaUrl, mimeType]);
+    } catch (error) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw error; }
+    const oldKey = typeof prior.rows[0]?.media_url === "string" ? prior.rows[0].media_url.match(/^\/api\/lessons\/media\/([a-f0-9-]{36})\?type=/i)?.[1] : null;
+    if (oldKey && oldKey !== uploaded.storageKey) await removeStoredMedia(oldKey).catch(() => undefined);
+    return { coverUrl: mediaUrl, coverType: mimeType };
+  },
+});
+
 router.post("/users/me/cover", requireAuth, (req, res, next): void => {
   coverUpload.single("file")(req, res, error => {
     void (async () => {
@@ -444,7 +490,7 @@ router.post("/users/me/cover", requireAuth, (req, res, next): void => {
         await ensureProfileCoverSchema();
         const actor = req.currentUser!;
         const prior = await pool.query("SELECT media_url FROM user_profile_covers WHERE user_id=$1", [actor.id]);
-        await persistUploadedMedia(file.filename, file.mimetype, file.path);
+        await persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: actor.id, routeKey: "users.me.cover", targetType: "user-cover", targetId: String(actor.id), maxBytes: 50 * 1024 * 1024 } });
         const mediaUrl = "/api/lessons/media/" + file.filename + "?type=" + file.mimetype;
         await pool.query("INSERT INTO user_profile_covers(user_id,media_url,media_type,updated_at) VALUES($1,$2,$3,now()) ON CONFLICT(user_id) DO UPDATE SET media_url=EXCLUDED.media_url,media_type=EXCLUDED.media_type,updated_at=now()", [actor.id, mediaUrl, file.mimetype]);
         const oldKey = typeof prior.rows[0]?.media_url === "string" ? prior.rows[0].media_url.match(/^\/api\/lessons\/media\/([a-f0-9-]{36})\?type=/i)?.[1] : null;
@@ -556,7 +602,38 @@ router.patch("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void
 
 const teacherDocumentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
+registerDirectMediaUploadRoutes(router, "/users/me/teacher-documents", [requireAuth], async request => {
+  const actor = request.currentUser!;
+  const documentType = typeof request.body?.documentType === "string" ? request.body.documentType.trim() : "";
+  const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+  const allowed = ["application/pdf","image/jpeg","image/png","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+  if (normalizeRole(actor.role) !== "teacher" || !["cv","resume","certificate","proof"].includes(documentType) || !allowed.includes(mimeType) || !isAllowedMediaType(mimeType)) return null;
+  return { routeKey: "users.me.teacher-documents", targetType: "teacher-document", targetId: `${actor.id}:${documentType}`, maxBytes: 10 * 1024 * 1024 };
+}, {
+  onCompleted: async (request, uploaded) => {
+    const actor = request.currentUser!;
+    const documentType = typeof request.body?.documentType === "string" ? request.body.documentType.trim() : "";
+    const fileName = typeof request.body?.fileName === "string" ? request.body.fileName.trim().slice(0, 255) : "teacher-document";
+    const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+    try {
+      const result = await pool.query(
+        "INSERT INTO teacher_documents (user_id, document_type, file_name, mime_type, size_bytes, data, storage_key) VALUES ($1,$2,$3,$4,$5,decode('', 'hex'),$6) RETURNING id, document_type, file_name, mime_type, size_bytes, created_at",
+        [actor.id, documentType, fileName, mimeType, uploaded.size, uploaded.storageKey],
+      );
+      return result.rows[0];
+    } catch (error) {
+      await removeStoredMedia(uploaded.storageKey).catch(() => undefined);
+      throw error;
+    }
+  },
+});
+
 router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
+  // Reject non-teacher accounts before multer buffers up to 10 MiB in memory.
+  if (normalizeRole(req.currentUser!.role) !== "teacher") {
+    res.status(403).json({ error: "Teacher account required" });
+    return;
+  }
   teacherDocumentUpload.single("file")(req, res, (error) => {
     void (async () => {
       if (error || !req.file) { res.status(400).json({ error: "Upload a PDF, image or document up to 10 MB" }); return; }
@@ -565,11 +642,32 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
       if (!["cv", "resume", "certificate", "proof"].includes(documentType)) { res.status(400).json({ error: "Choose CV, resume, certificate or proof" }); return; }
       const allowed = ["application/pdf","image/jpeg","image/png","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
       if (!allowed.includes(req.file.mimetype)) { res.status(415).json({ error: "Unsupported document type" }); return; }
-      const result = await pool.query(
-        "INSERT INTO teacher_documents (user_id, document_type, file_name, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, document_type, file_name, mime_type, size_bytes, created_at",
-        [req.currentUser!.id, documentType, req.file.originalname, req.file.mimetype, req.file.size, req.file.buffer],
-      );
-      res.status(201).json(result.rows[0]);
+      const actor = req.currentUser!;
+      const localPath = path.join(os.tmpdir(), `dallyletter-teacher-document-${crypto.randomUUID()}`);
+      const storageKey = createMediaStorageKey();
+      let mediaPersisted = false;
+      try {
+        await writeFile(localPath, req.file.buffer);
+        await persistTicketedMediaUpload({
+          localPath, storageKey, mimeType: req.file.mimetype,
+          binding: {
+            userId: actor.id, routeKey: "users.me.teacher-documents",
+            targetType: "teacher-document", targetId: `${actor.id}:${documentType}`,
+            maxBytes: 10 * 1024 * 1024,
+          },
+        });
+        mediaPersisted = true;
+        const result = await pool.query(
+          "INSERT INTO teacher_documents (user_id, document_type, file_name, mime_type, size_bytes, data, storage_key) VALUES ($1,$2,$3,$4,$5,decode('', 'hex'),$6) RETURNING id, document_type, file_name, mime_type, size_bytes, created_at",
+          [actor.id, documentType, req.file.originalname, req.file.mimetype, req.file.size, storageKey],
+        );
+        res.status(201).json(result.rows[0]);
+      } catch (error) {
+        if (mediaPersisted) await removeStoredMedia(storageKey).catch(() => undefined);
+        throw error;
+      } finally {
+        await unlink(localPath).catch(() => undefined);
+      }
     })().catch(() => res.status(500).json({ error: "Qualification document upload failed" }));
   });
 });
@@ -1057,7 +1155,54 @@ const qualificationUpload = multer({
   fileFilter: (_req,file,callback) => callback(null,["application/pdf","image/jpeg","image/png"].includes(file.mimetype)),
 });
 
-router.post("/qualifications/:id/document", requireAuth, (req,res,next):void => {
+const authorizeQualificationDocumentUpload = (req: Request, res: Response, next: NextFunction): void => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid qualification id." }); return; }
+  void pool.query("SELECT user_id FROM teacher_qualifications WHERE id=$1", [id]).then(result => {
+    if (!result.rows.length) { res.status(404).json({ error: "Qualification not found." }); return; }
+    if (Number(result.rows[0].user_id) !== req.currentUser!.id) {
+      res.status(403).json({ error: "Upload qualification evidence from the qualification owner's account." });
+      return;
+    }
+    next();
+  }).catch(next);
+};
+
+registerDirectMediaUploadRoutes(router, "/qualifications/:id/document", [requireAuth, authorizeQualificationDocumentUpload], async request => {
+  const id = Number(request.params.id);
+  const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+  if (!Number.isSafeInteger(id) || id <= 0 || !["application/pdf","image/jpeg","image/png"].includes(mimeType)) return null;
+  const found = await pool.query("SELECT user_id FROM teacher_qualifications WHERE id=$1", [id]);
+  if (!found.rows.length || Number(found.rows[0].user_id) !== request.currentUser!.id) return null;
+  return { routeKey: "qualifications.document", targetType: "teacher-qualification", targetId: String(id), maxBytes: 10 * 1024 * 1024 };
+}, {
+  onCompleted: async (request, uploaded) => {
+    const actor = request.currentUser!;
+    const id = Number(request.params.id);
+    const mimeType = String(request.body.mimeType);
+    const fileName = typeof request.body.fileName === "string" ? request.body.fileName.replace(/[\\r\\n]/g, "").slice(0, 255) || "qualification-document" : "qualification-document";
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const current = await client.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1 FOR UPDATE", [id]);
+      if (!current.rows.length || Number(current.rows[0].user_id) !== actor.id) throw new Error("Qualification ownership changed during document upload");
+      const result = await client.query(
+        "INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data,storage_key) VALUES($1,'certificate',$2,$3,$4,decode('', 'hex'),$5) RETURNING id,file_name,mime_type,size_bytes,created_at",
+        [actor.id, fileName, mimeType, uploaded.size, uploaded.storageKey],
+      );
+      const linked = await client.query("UPDATE teacher_qualifications SET document_id=$1 WHERE id=$2 AND user_id=$3 RETURNING id", [result.rows[0].id, id, actor.id]);
+      if (!linked.rows.length) throw new Error("Qualification disappeared before its document could be linked");
+      await client.query("COMMIT");
+      return { document: result.rows[0], message: "Document uploaded; qualification remains pending verification." };
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      await removeStoredMedia(uploaded.storageKey).catch(() => undefined);
+      throw error;
+    } finally { client.release(); }
+  },
+});
+
+router.post("/qualifications/:id/document", requireAuth, authorizeQualificationDocumentUpload, (req,res,next):void => {
   qualificationUpload.single("file")(req,res,error=>{
     void (async()=>{
       if(error instanceof multer.MulterError){res.status(400).json({error:"Choose a PDF, JPG, or PNG file up to 10 MB."});return;}
@@ -1065,25 +1210,43 @@ router.post("/qualifications/:id/document", requireAuth, (req,res,next):void => 
       const file=req.file;
       if(!file){res.status(415).json({error:"Choose a PDF, JPG, or PNG file."});return;}
       const actor=req.currentUser!;
+      let storageKey:string|null=null;
+      let mediaPersisted=false;
       try{
         const id=Number(req.params.id);
         if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid qualification id."});return;}
         const q=await pool.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1",[id]);
         if(!q.rows.length){res.status(404).json({error:"Qualification not found."});return;}
-        if(q.rows[0].user_id!==actor.id&&!isOwnerRole(actor.role)){res.status(403).json({error:"You cannot upload documents for this qualification."});return;}
-        if(q.rows[0].user_id!==actor.id&&isOwnerRole(actor.role)){res.status(403).json({error:"Upload documents from the qualification owner's account."});return;}
+        if(Number(q.rows[0].user_id)!==actor.id){res.status(403).json({error:"Upload qualification evidence from the qualification owner's account."});return;}
         const bytes=await readFile(file.path);
         const validPdf=file.mimetype==="application/pdf"&&bytes.subarray(0,5).toString()==="%PDF-";
         const validJpeg=file.mimetype==="image/jpeg"&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff;
         const validPng=file.mimetype==="image/png"&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
-        if(!validPdf&&!validJpeg&&!validPng){await import("node:fs/promises").then(fs=>fs.unlink(file.path).catch(()=>undefined));res.status(415).json({error:"The file content does not match a supported PDF/JPG/PNG type."});return;}
-        const storageKey=createMediaStorageKey();
-        await persistUploadedMedia(storageKey,file.mimetype,file.path);
-        const result=await pool.query("INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data,storage_key) VALUES($1,'certificate',$2,$3,$4,decode('', 'hex'),$5) RETURNING id,file_name,mime_type,size_bytes,created_at",[actor.id,file.originalname.replace(/[\\r\\n]/g,"").slice(0,255)||"qualification-document",file.mimetype,bytes.length,storageKey]);
-        await pool.query("UPDATE teacher_qualifications SET document_id=$1 WHERE id=$2 AND user_id=$3",[result.rows[0].id,id,actor.id]);
-        res.status(201).json({document:result.rows[0],message:"Document uploaded; qualification remains pending verification."});
-      }catch(error){next(error);}
-    })();
+        if(!validPdf&&!validJpeg&&!validPng){res.status(415).json({error:"The file content does not match a supported PDF/JPG/PNG type."});return;}
+        storageKey=createMediaStorageKey();
+        await persistTicketedMediaUpload({ localPath:file.path, storageKey, mimeType:file.mimetype, binding:{ userId:actor.id, routeKey:"qualifications.document", targetType:"teacher-qualification", targetId:String(id), maxBytes:10*1024*1024 } });
+        mediaPersisted=true;
+        const client=await pool.connect();
+        try{
+          await client.query("BEGIN");
+          const current=await client.query("SELECT id,user_id FROM teacher_qualifications WHERE id=$1 FOR UPDATE",[id]);
+          if(!current.rows.length||Number(current.rows[0].user_id)!==actor.id)throw new Error("Qualification ownership changed during document upload");
+          const result=await client.query("INSERT INTO teacher_documents(user_id,document_type,file_name,mime_type,size_bytes,data,storage_key) VALUES($1,'certificate',$2,$3,$4,decode('', 'hex'),$5) RETURNING id,file_name,mime_type,size_bytes,created_at",[actor.id,file.originalname.replace(/[\\r\\n]/g,"").slice(0,255)||"qualification-document",file.mimetype,bytes.length,storageKey]);
+          const linked=await client.query("UPDATE teacher_qualifications SET document_id=$1 WHERE id=$2 AND user_id=$3 RETURNING id",[result.rows[0].id,id,actor.id]);
+          if(!linked.rows.length)throw new Error("Qualification disappeared before its document could be linked");
+          await client.query("COMMIT");
+          res.status(201).json({document:result.rows[0],message:"Document uploaded; qualification remains pending verification."});
+        }catch(error){
+          await client.query("ROLLBACK").catch(()=>undefined);
+          throw error;
+        }finally{client.release();}
+      }catch(error){
+        if(mediaPersisted&&storageKey)await removeStoredMedia(storageKey).catch(()=>undefined);
+        next(error);
+      }finally{
+        await import("node:fs/promises").then(fs=>fs.unlink(file.path).catch(()=>undefined));
+      }
+    })().catch(next);
   });
 });
 
@@ -1155,14 +1318,34 @@ router.get("/qualifications/:id/document", requireAuth, requireManagerPermission
   if(!target || (Number(doc.user_id)!==actor.id && !isOwnerRole(actor.role) && !canModerateUser(actor,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level}))){res.status(404).json({error:"Document not found."});return;}
   if(doc.user_id!==actor.id&&!(canAccessManager(actor)&&await managerHasPermission(actor,"qualifications.view"))){res.status(403).json({error:"Document access denied."});return;}
   if(!doc.storage_key){res.status(503).json({error:"Document storage key unavailable for this legacy record."});return;}
-  const media=await streamStoredMedia(doc.storage_key);
-  if(!media){res.status(404).json({error:"Stored document not found."});return;}
+  const safeFileName=String(doc.file_name).replace(/["\\r\\n]/g,"").slice(0,255);
   res.setHeader("Content-Type",doc.mime_type);
-  res.setHeader("Content-Disposition",`inline; filename="${String(doc.file_name).replace(/["\\r\\n]/g,"")}"`);
-  res.setHeader("Cache-Control","private, no-store");
+  res.setHeader("Content-Disposition",`inline; filename="${safeFileName}"`);
+  res.setHeader("Cache-Control","private, no-store, max-age=0");
+  res.setHeader("X-Content-Type-Options","nosniff");
+  res.setHeader("Referrer-Policy","no-referrer");
+  // The document and its owner/scope have been authorized above. Redirect only
+  // when the exact object exists in private object storage; old PostgreSQL-backed
+  // documents continue through the bounded, streaming API fallback.
+  if(isPrivateObjectDeliveryEnabled()){
+    const metadata=await headObject(String(doc.storage_key));
+    if(metadata){
+      const signed=createPresignedPrivateMediaRead(String(doc.storage_key),120);
+      res.status(307).setHeader("Location",signed.url).end();
+      return;
+    }
+  }
+  const media=await streamStoredMedia(String(doc.storage_key),req.headers.range);
+  if(!media){res.status(404).json({error:"Stored document not found."});return;}
   res.status(media.status);
-  const bytes=Buffer.from(await media.arrayBuffer());
-  res.send(bytes);
+  media.headers.forEach((value,key)=>res.setHeader(key,value));
+  res.setHeader("Content-Type",doc.mime_type);
+  res.setHeader("Content-Disposition",`inline; filename="${safeFileName}"`);
+  if(media.body){
+    await pipeline(Readable.fromWeb(media.body as import("node:stream/web").ReadableStream<Uint8Array>),res);
+  }else{
+    res.end();
+  }
 });
 
 router.post("/users/me/notification-email/request", requireAuth, async(req,res):Promise<void>=>{

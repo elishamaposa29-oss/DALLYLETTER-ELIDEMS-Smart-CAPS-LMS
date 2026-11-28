@@ -12,7 +12,9 @@ import { managerHasPermission, requireManagerPermissionIfManager } from "../lib/
 import { getAIProvider } from "../lib/ai-provider";
 import { hasContentPermission } from "../lib/content-permissions";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { registerDirectMediaUploadRoutes } from "../lib/media-direct-upload-routes";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
 const learnerRole = "student";
@@ -48,7 +50,7 @@ router.post("/answer-media", requireAuth, (req,res):void => {
     if (error) { res.status(400).json({error:"A supported answer file is required"}); return; }
     if (!req.file) { res.status(400).json({error:"A supported answer file is required"}); return; }
     const file = req.file;
-    void persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => {
+    void persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: req.currentUser!.id, routeKey: "exercises.answer-media", targetType: "learner-answer-media-draft", targetId: String(req.currentUser!.id), maxBytes: MAX_MEDIA_SIZE_BYTES } }).then(() => {
       if (res.headersSent) return;
       res.status(201).json({
         mediaUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`,
@@ -110,7 +112,7 @@ router.post("/question-media", requireAuth, requireManagerPermissionIfManager("u
       const attachmentUrl = `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`;
       let mediaPersisted = false;
       try {
-        await persistUploadedMedia(file.filename, file.mimetype, file.path);
+        await persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: user.id, routeKey: "exercises.question-media", targetType: "exercise-question", targetId: `${exerciseId}:${questionId}`, maxBytes: MAX_MEDIA_SIZE_BYTES } });
         mediaPersisted = true;
         const [updatedQuestion] = await db.update(exerciseQuestionsTable)
           .set({ config: { ...config, attachment: { url: attachmentUrl, fileName: file.originalname, mimeType: file.mimetype, size: file.size } } })
@@ -129,6 +131,48 @@ router.post("/question-media", requireAuth, requireManagerPermissionIfManager("u
       res.status(201).json({attachmentUrl,fileName:file.originalname,mimeType:file.mimetype,size:file.size});
     })().catch(next);
   });
+});
+
+registerDirectMediaUploadRoutes(router, "/answer-media", [requireAuth], async request => {
+  const actor = request.currentUser!;
+  if (actor.role !== learnerRole) return null;
+  return { routeKey: "exercises.answer-media", targetType: "learner-answer-media-draft", targetId: String(actor.id), maxBytes: MAX_MEDIA_SIZE_BYTES };
+});
+
+registerDirectMediaUploadRoutes(router, "/question-media", [requireAuth, requireManagerPermissionIfManager("users.override.teacher")], async request => {
+  const actor = request.currentUser!;
+  if (!canManageAcademicContent(actor)) return null;
+  const exerciseId = parseId(request.body?.exerciseId);
+  const questionId = parseId(request.body?.questionId);
+  if (!exerciseId || !questionId) return null;
+  const [exercise] = await db.select().from(exercisesTable).where(eq(exercisesTable.id, exerciseId));
+  if (!exercise || !(await canManageExerciseForUser(actor, exercise.createdBy, "users.override.teacher", exerciseId, "edit"))) return null;
+  const [question] = await db.select({ id: exerciseQuestionsTable.id }).from(exerciseQuestionsTable)
+    .where(and(eq(exerciseQuestionsTable.id, questionId), eq(exerciseQuestionsTable.exerciseId, exerciseId)));
+  if (!question) return null;
+  return { routeKey: "exercises.question-media", targetType: "exercise-question", targetId: `${exerciseId}:${questionId}`, maxBytes: MAX_MEDIA_SIZE_BYTES };
+}, {
+  onCompleted: async (request, uploaded) => {
+    const exerciseId = parseId(request.body?.exerciseId);
+    const questionId = parseId(request.body?.questionId);
+    const fileName = typeof request.body?.fileName === "string" ? request.body.fileName.trim().slice(0, 255) : "exercise-question-attachment";
+    const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+    if (!exerciseId || !questionId || !mimeType) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw new Error("Invalid exercise attachment metadata"); }
+    const [question] = await db.select().from(exerciseQuestionsTable)
+      .where(and(eq(exerciseQuestionsTable.id, questionId), eq(exerciseQuestionsTable.exerciseId, exerciseId)));
+    if (!question) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw new Error("Exercise question no longer exists"); }
+    const config = question.config && typeof question.config === "object" && !Array.isArray(question.config) ? question.config as Record<string, unknown> : {};
+    const previous = config.attachment && typeof config.attachment === "object" && !Array.isArray(config.attachment) ? config.attachment as Record<string, unknown> : {};
+    const previousKey = typeof previous.url === "string" ? previous.url.match(/\/api\/lessons\/media\/([a-f0-9-]{36})/i)?.[1] : null;
+    const attachmentUrl = `/api/lessons/media/${uploaded.storageKey}?type=${encodeURIComponent(mimeType)}`;
+    try {
+      const [saved] = await db.update(exerciseQuestionsTable).set({ config: { ...config, attachment: { url: attachmentUrl, fileName, mimeType, size: uploaded.size } } })
+        .where(and(eq(exerciseQuestionsTable.id, questionId), eq(exerciseQuestionsTable.exerciseId, exerciseId))).returning({ id: exerciseQuestionsTable.id });
+      if (!saved) throw new Error("Question attachment target disappeared before save");
+    } catch (error) { await removeStoredMedia(uploaded.storageKey).catch(() => undefined); throw error; }
+    if (previousKey && previousKey !== uploaded.storageKey) await removeStoredMedia(previousKey).catch(() => undefined);
+    return { attachmentUrl, fileName, mimeType, size: uploaded.size };
+  },
 });
 
 async function writeAudit(userId: number, action: string, targetId: number, details: Record<string, unknown>) {

@@ -1,10 +1,12 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { and, eq, inArray, like } from "drizzle-orm";
-import { db, handRaisesTable, activityLogTable, classesTable, messagesTable } from "@workspace/db";
+import { db, pool, handRaisesTable, activityLogTable, classesTable, messagesTable } from "@workspace/db";
 import { RaiseHandBody, ListHandRaisesQueryParams } from "@workspace/api-zod";
 import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, removeStoredMedia } from "../lib/media-storage";
+import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { registerDirectMediaUploadRoutes } from "../lib/media-direct-upload-routes";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -47,6 +49,39 @@ router.post("/raise-hand", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json({ ...handRaise, createdAt: handRaise.createdAt.toISOString() });
 });
 
+registerDirectMediaUploadRoutes(router, "/raise-hand/with-media", [requireAuth], async request => {
+  const actor = request.currentUser!;
+  const classId = Number(request.body?.classId);
+  if (actor.role !== "student" || !Number.isSafeInteger(classId) || classId <= 0) return null;
+  const enrollment = await pool.query(
+    "SELECT 1 FROM public.enrollments WHERE learner_id=$1 AND class_id=$2 AND status='active' LIMIT 1",
+    [actor.id, classId],
+  );
+  if (!enrollment.rows.length) return null;
+  return { routeKey: "handRaises.raise-hand.with-media", targetType: "class-hand-raise", targetId: String(classId), maxBytes: MAX_MEDIA_SIZE_BYTES };
+}, {
+  onCompleted: async (request, uploaded) => {
+    const actor = request.currentUser!;
+    const classId = Number(request.body?.classId);
+    const question = typeof request.body?.question === "string" ? request.body.question.slice(0, 5000) : "";
+    const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+    const mediaUrl = `/api/lessons/media/${uploaded.storageKey}?type=${encodeURIComponent(mimeType)}`;
+    try {
+      const [handRaise] = await db.insert(handRaisesTable).values({
+        studentId: actor.id, studentName: actor.name, classId, question: question || null,
+        mediaUrl, mediaOwned: true, isResolved: false,
+      }).returning();
+      await db.insert(activityLogTable).values({
+        type: "hand_raised", description: actor.name + " raised a hand with an attachment", actorName: actor.name,
+      });
+      return { ...handRaise, createdAt: handRaise.createdAt.toISOString() };
+    } catch (error) {
+      await removeStoredMedia(uploaded.storageKey).catch(() => undefined);
+      throw error;
+    }
+  },
+});
+
 // POST /raise-hand/with-media — atomically upload a supported attachment and create the hand raise.
 router.post("/raise-hand/with-media", requireAuth, (req, res): void => {
   if (req.currentUser?.role !== "student") { res.status(403).json({ error: "Student access required" }); return; }
@@ -58,7 +93,23 @@ router.post("/raise-hand/with-media", requireAuth, (req, res): void => {
       const question = typeof req.body?.question === "string" ? req.body.question.slice(0, 5000) : "";
       const key = req.file!.filename;
       try {
-        await persistUploadedMedia(key, req.file!.mimetype, req.file!.path);
+        if (!Number.isSafeInteger(classId) || classId <= 0) {
+          await removeStoredMedia(key).catch(() => undefined);
+          res.status(400).json({ error: "A valid classId is required." });
+          return;
+        }
+        // A learner may attach evidence only to a class in which their active
+        // enrollment is recorded; knowing another class ID is not authority.
+        const enrollment = await pool.query(
+          "SELECT 1 FROM public.enrollments WHERE learner_id=$1 AND class_id=$2 AND status='active' LIMIT 1",
+          [user.id, classId],
+        );
+        if (!enrollment.rows.length) {
+          await removeStoredMedia(key).catch(() => undefined);
+          res.status(403).json({ error: "You must be actively enrolled in this class to raise a hand with media." });
+          return;
+        }
+        await persistTicketedMediaUpload({ localPath: req.file!.path, storageKey: key, mimeType: req.file!.mimetype, binding: { userId: user.id, routeKey: "handRaises.raise-hand.with-media", targetType: "class-hand-raise", targetId: String(classId), maxBytes: MAX_MEDIA_SIZE_BYTES } });
         const mediaUrl = "/api/lessons/media/" + key + "?type=" + encodeURIComponent(req.file!.mimetype);
         const [handRaise] = await db.insert(handRaisesTable).values({
           studentId: user.id, studentName: user.name, classId, question: question || null, mediaUrl, mediaOwned: true, isResolved: false,

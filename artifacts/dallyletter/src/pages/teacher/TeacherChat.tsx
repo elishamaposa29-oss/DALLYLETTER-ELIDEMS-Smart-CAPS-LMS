@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import { StudyGroupPollPanel } from "@/components/StudyGroupPollPanel";
 import { useListMessages, useSendMessage, useListStudyGroups, useListUsers, getApiUrl } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
@@ -93,30 +94,17 @@ export default function TeacherChat() {
 
   const handleSendMedia = async (file: File) => {
     if (!selectedGroupId && !selectedUserId) throw new Error("Select a conversation before attaching learning media.");
-    const body = new FormData();
-    if (selectedGroupId) body.append("groupId", String(selectedGroupId));
-    if (selectedUserId) body.append("recipientId", String(selectedUserId));
-    body.append("file", file, file.name);
-    const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: localStorage.getItem("dallyletter_token") ? { Authorization: `Bearer ${localStorage.getItem("dallyletter_token")}` } : undefined, body });
-    const result = await upload.json().catch(() => null) as { mediaUrl?: string; error?: string } | null;
-    if (!upload.ok || !result?.mediaUrl) throw new Error(result?.error ?? "Attachment upload failed.");
+    const target = selectedGroupId ? "groupId=" + encodeURIComponent(String(selectedGroupId)) : "recipientId=" + encodeURIComponent(String(selectedUserId));
+    const result = await uploadRouteMedia<{ mediaUrl: string }>(file, localStorage.getItem("dallyletter_token"), "/api/messages/media?" + target);
     await sendMessageMutation.mutateAsync({ data: { content: file.name, type: "media" as SendMessageBodyType, groupId: selectedGroupId, recipientId: selectedUserId, mediaUrl: result.mediaUrl } });
     await queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey({ groupId: selectedGroupId, recipientId: selectedUserId }) });
   };
 
   const handleSendVoice = async (audio: Blob) => {
     if (!selectedGroupId && !selectedUserId) throw new Error("Select a conversation before sending a voice message.");
-    const body = new FormData();
-    if (selectedGroupId) body.append("groupId", String(selectedGroupId));
-    if (selectedUserId) body.append("recipientId", String(selectedUserId));
-    body.append("file", audio, "voice-message.webm");
-    const token = localStorage.getItem("dallyletter_token");
-    const upload = await fetch(getApiUrl("/api/messages/media"), { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body });
-    if (!upload.ok) {
-      const result = await upload.json().catch(() => null) as { error?: string } | null;
-      throw new Error(result?.error ?? "Voice upload failed.");
-    }
-    const { mediaUrl } = await upload.json() as { mediaUrl: string };
+    const target = selectedGroupId ? "groupId=" + encodeURIComponent(String(selectedGroupId)) : "recipientId=" + encodeURIComponent(String(selectedUserId));
+    const voiceFile = new File([audio], "voice-message.webm", { type: audio.type || "audio/webm" });
+    const { mediaUrl } = await uploadRouteMedia<{ mediaUrl: string }>(voiceFile, localStorage.getItem("dallyletter_token"), "/api/messages/media?" + target);
     await sendMessageMutation.mutateAsync({
       data: { content: "Voice message", type: SendMessageBodyType.voice, groupId: selectedGroupId, recipientId: selectedUserId, mediaUrl },
     });

@@ -57,6 +57,9 @@ jobs:
       - name: Provision CI database schema
         run: pnpm --filter @workspace/db push
 
+      - name: Verify media upload ticket lifecycle and account isolation
+        run: pnpm --dir artifacts/api-server run test:media-upload-lifecycle
+
       - name: Verify health endpoint is available
         run: |
           node - <<'NODE'

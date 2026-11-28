@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { getApiUrl } from "@workspace/api-client-react";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -483,15 +484,7 @@ export default function StudentExercise() {
     setMessage("");
     try {
       const token = localStorage.getItem("dallyletter_token");
-      const body = new FormData();
-      body.append("file", file);
-      const response = await fetch(getApiUrl("/api/exercises/answer-media"), {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body,
-      });
-      const payload = await response.json().catch(() => null) as { mediaUrl?: string; fileName?: string; error?: string } | null;
-      if (!response.ok || !payload?.mediaUrl) throw new Error(payload?.error || "Media upload failed");
+      const payload = await uploadRouteMedia<{ mediaUrl: string; fileName?: string }>(file, token, "/api/exercises/answer-media");
       updateAnswer(questionId, { mediaReference: payload.mediaUrl });
       setMessage(`Attached ${payload.fileName || file.name} to Q${(data?.questions.findIndex((question) => question.id === questionId) ?? -1) + 1}.`);
     } catch (cause) {

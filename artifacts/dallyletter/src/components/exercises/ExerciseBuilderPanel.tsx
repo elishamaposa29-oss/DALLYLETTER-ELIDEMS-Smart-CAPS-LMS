@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getApiUrl } from "@workspace/api-client-react";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import { RichTextEditor } from "@/components/RichTextEditor";
 
 interface PollOption { id:string; label:string; value:string; isCorrect:boolean }
@@ -50,10 +51,8 @@ export function ExerciseBuilderPanel({lessonId,onSaved,onClose}:ExerciseBuilderP
  };
  const persistQuestionAttachment=async(exerciseId:number,questionId:number,attachment:ExerciseQuestionDraft["attachment"],questionNumber:number)=>{
    if(!attachment?.file)return attachment?.url?attachment:null;
-   const token=localStorage.getItem("dallyletter_token");const body=new FormData();body.append("file",attachment.file);body.append("exerciseId",String(exerciseId));body.append("questionId",String(questionId));
-   const r=await fetch(getApiUrl("/api/exercises/question-media"),{method:"POST",headers:token?{Authorization:"Bearer "+token}:{},body});
-   const data=await r.json().catch(()=>null) as {attachmentUrl?:string;fileName?:string;mimeType?:string;error?:string}|null;
-   if(!r.ok||!data?.attachmentUrl)throw new Error(`Question ${questionNumber} media upload failed${attachment.fileName?` (${attachment.fileName})`:""}: ${data?.error||"unsupported or unavailable media storage"}`);
+   const token=localStorage.getItem("dallyletter_token");
+   const data=await uploadRouteMedia<{attachmentUrl:string;fileName?:string;mimeType?:string}>(attachment.file,token,"/api/exercises/question-media",{exerciseId:String(exerciseId),questionId:String(questionId),fileName:attachment.fileName});
    if(attachment.previewUrl)URL.revokeObjectURL(attachment.previewUrl);
    return {url:data.attachmentUrl,fileName:data.fileName||attachment.fileName,mimeType:data.mimeType||attachment.mimeType};
  };

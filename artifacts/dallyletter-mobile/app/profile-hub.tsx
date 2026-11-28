@@ -1,6 +1,7 @@
 import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-grades";
 import { Feather } from "@expo/vector-icons";
 import { getApiUrl } from "@workspace/api-client-react";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { VideoView, useVideoPlayer } from "expo-video";
@@ -212,8 +213,8 @@ export default function MobileProfileHub() {
       const asset=picked.assets[0];const mime=asset.mimeType||"image/jpeg";
       if(!["image/jpeg","image/png","image/webp"].includes(mime)){Alert.alert("Unsupported image","Choose a JPG, PNG or WebP image.");return;}
       if(asset.fileSize&&asset.fileSize>8*1024*1024){Alert.alert("File too large","Profile photos must be 8 MB or smaller.");return;}
-      setCoverBusy(true);const form=new FormData();form.append("file",{uri:asset.uri,name:asset.fileName||"profile-avatar.jpg",type:mime} as any);
-      const result=await api("/api/users/me/avatar",{method:"POST",body:form});
+      setCoverBusy(true);
+      const result=await uploadRouteMedia(asset.uri,asset.fileName||"profile-avatar.jpg",mime,token,"/api/users/me/avatar");
       await refreshMediaProfile();
       setMessage("Profile photo saved and reloaded from your account.");
     }catch(e){Alert.alert("Profile photo upload failed",e instanceof Error?e.message:"Please try again.");}
@@ -231,9 +232,7 @@ export default function MobileProfileHub() {
       if(!["image/jpeg","image/png","image/webp","video/mp4","video/webm","video/quicktime"].includes(mime)){Alert.alert("Unsupported media","Choose a JPG, PNG, WebP, MP4, WebM or MOV file.");return;}
       if(asset.fileSize&&asset.fileSize>20*1024*1024){Alert.alert("File too large","Cover media must be 20 MB or smaller on the current storage configuration.");return;}
       setCoverBusy(true);
-      const form=new FormData();
-      form.append("file",{uri:asset.uri,name:asset.fileName||(mime.startsWith("video/")?"profile-cover.mp4":"profile-cover.jpg"),type:mime} as any);
-      const result=await api("/api/users/me/cover",{method:"POST",body:form});
+      const result=await uploadRouteMedia(asset.uri,asset.fileName||(mime.startsWith("video/")?"profile-cover.mp4":"profile-cover.jpg"),mime,token,"/api/users/me/cover");
       await refreshMediaProfile();
       setMessage("Profile cover saved and reloaded from your account.");
     }catch(e){Alert.alert("Cover upload failed",e instanceof Error?e.message:"Please try again.");}
@@ -248,9 +247,7 @@ export default function MobileProfileHub() {
     const asset=picked.assets[0];
     if(asset.size&&asset.size>10*1024*1024){Alert.alert("File too large","Choose a PDF/JPG/PNG up to 10 MB.");return;}
     await act(async()=>{
-      const form=new FormData();
-      form.append("file",{uri:asset.uri,name:asset.name||"qualification-document.pdf",type:asset.mimeType||"application/pdf"} as any);
-      const result=await api("/api/qualifications/"+id+"/document",{method:"POST",body:form});
+      const result=await uploadRouteMedia(asset.uri,asset.name||"qualification-document.pdf",asset.mimeType||"application/pdf",token,"/api/qualifications/"+id+"/document",{fileName:asset.name||"qualification-document.pdf"});
       setMessage(result.message||"Document uploaded for verification.");await load();
     });
   };
@@ -323,8 +320,7 @@ export default function MobileProfileHub() {
     if(picked.canceled||!picked.assets?.[0])return;
     const asset=picked.assets[0];
     if(asset.size&&asset.size>10*1024*1024)throw new Error("Documents must be 10 MB or smaller.");
-    const form=new FormData();form.append("file",{uri:asset.uri,name:asset.name||"profile-document.pdf",type:asset.mimeType||"application/pdf"} as any);form.append("documentType",documentType);
-    const uploaded=await api("/api/users/me/teacher-documents",{method:"POST",body:form});
+    const uploaded=await uploadRouteMedia(asset.uri,asset.name||"profile-document.pdf",asset.mimeType||"application/pdf",token,"/api/users/me/teacher-documents",{documentType,fileName:asset.name||"profile-document.pdf"});
     let photoLinked=false;
     if(documentType==="cv"&&String(asset.mimeType||"").startsWith("image/")&&uploaded?.id){
       try{
