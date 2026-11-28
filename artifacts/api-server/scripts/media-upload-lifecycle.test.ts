@@ -14,6 +14,7 @@ import {
   persistTicketedMediaUpload,
 } from "../src/lib/media-upload-tickets";
 import { removeStoredMedia } from "../src/lib/media-storage";
+import { authorizeTicketedMediaDelivery } from "../src/lib/media-delivery-access";
 
 const suffix = randomUUID();
 let userA = 0;
@@ -99,6 +100,55 @@ test("uploaded PDF is MIME-sniffed, persisted, read back and SHA-256 verified", 
     assert.equal(row.rows[0]?.uploaded_sha256, result.sha256);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("ticketed private media is isolated by account while published lesson media follows its resource access", async () => {
+  const privateTicket = await issueMediaUploadTicket({
+    userId: userA, routeKey: "assignments.submission-material", targetType: "learner-submission-draft",
+    targetId: String(userA), mimeType: "application/pdf", maxBytes: 1024,
+  });
+  storageKeys.push(privateTicket.storageKey);
+  const privateHash = "b".repeat(64);
+  await markMediaUploadVerified({
+    ticket: privateTicket.ticket, userId: userA, routeKey: "assignments.submission-material",
+    targetType: "learner-submission-draft", targetId: String(userA), mimeType: "application/pdf",
+    size: 100, sha256: privateHash,
+  });
+  await consumeMediaUploadTicket({
+    ticket: privateTicket.ticket, userId: userA, routeKey: "assignments.submission-material",
+    targetType: "learner-submission-draft", targetId: String(userA), mimeType: "application/pdf",
+  });
+  const [actorA, actorB] = await Promise.all([
+    pool.query("SELECT * FROM users WHERE id=$1", [userA]),
+    pool.query("SELECT * FROM users WHERE id=$1", [userB]),
+  ]);
+  assert.equal(await authorizeTicketedMediaDelivery(privateTicket.storageKey, actorA.rows[0]), true);
+  assert.equal(await authorizeTicketedMediaDelivery(privateTicket.storageKey, actorB.rows[0]), false);
+
+  const sharedTicket = await issueMediaUploadTicket({
+    userId: userA, routeKey: "lessons.media", targetType: "lesson-media-library",
+    targetId: String(userA), mimeType: "application/pdf", maxBytes: 1024,
+  });
+  storageKeys.push(sharedTicket.storageKey);
+  const sharedHash = "c".repeat(64);
+  await markMediaUploadVerified({
+    ticket: sharedTicket.ticket, userId: userA, routeKey: "lessons.media",
+    targetType: "lesson-media-library", targetId: String(userA), mimeType: "application/pdf",
+    size: 100, sha256: sharedHash,
+  });
+  await consumeMediaUploadTicket({
+    ticket: sharedTicket.ticket, userId: userA, routeKey: "lessons.media",
+    targetType: "lesson-media-library", targetId: String(userA), mimeType: "application/pdf",
+  });
+  const lesson = await pool.query(
+    "INSERT INTO lessons(title,subject,type,media_url,teacher_id,teacher_name) VALUES('Media access test','Mathematics','document',$1,$2,'Media Test') RETURNING id",
+    [`/api/lessons/media/${sharedTicket.storageKey}?type=application/pdf`, userA],
+  );
+  try {
+    assert.equal(await authorizeTicketedMediaDelivery(sharedTicket.storageKey, actorB.rows[0]), true);
+  } finally {
+    await pool.query("DELETE FROM lessons WHERE id=$1", [lesson.rows[0].id]);
   }
 });
 
