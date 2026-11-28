@@ -131,38 +131,70 @@ export async function streamStoredMedia(storageKey: string, range?: string): Pro
     if (remote) return remote;
   }
 
-  const { rows } = await pool.query(
-    "SELECT mime_type, size_bytes, chunk_index, data FROM media_object_chunks WHERE storage_key = $1 ORDER BY chunk_index",
+  // Read metadata first. Browsers commonly request byte ranges while seeking through
+  // audio/video; loading every PostgreSQL chunk for each seek wastes DB I/O and RAM.
+  const metadata = await pool.query(
+    "SELECT mime_type, size_bytes FROM media_object_chunks WHERE storage_key = $1 ORDER BY chunk_index LIMIT 1",
     [storageKey],
   );
-  if (!rows.length) return null;
-  const size = Number(rows[0].size_bytes);
-  const mimeType = String(rows[0].mime_type || "application/octet-stream");
-  const bytes = Buffer.concat(rows.map((row: { data: Buffer }) => Buffer.from(row.data)));
-  if (bytes.length !== size) throw new Error("Stored media integrity check failed");
+  if (!metadata.rows.length) return null;
+
+  const size = Number(metadata.rows[0].size_bytes);
+  const mimeType = String(metadata.rows[0].mime_type || "application/octet-stream");
+  if (!Number.isSafeInteger(size) || size < 0) throw new Error("Stored media size is invalid");
+
+  let start = 0;
+  let end = size - 1;
+  if (range) {
+    const match = /^bytes=(\\d*)-(\\d*)$/.exec(range.trim());
+    if (!match || size === 0 || (!match[1] && !match[2])) {
+      return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}`, "Accept-Ranges": "bytes" } });
+    }
+    if (!match[1]) {
+      const suffixLength = Number(match[2]);
+      if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+        return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}`, "Accept-Ranges": "bytes" } });
+      }
+      start = Math.max(size - suffixLength, 0);
+    } else {
+      start = Number(match[1]);
+    }
+    end = match[2] ? Number(match[2]) : size - 1;
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end || start >= size) {
+      return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}`, "Accept-Ranges": "bytes" } });
+    }
+    end = Math.min(end, size - 1);
+  }
+
+  const firstChunk = Math.floor(start / DB_MEDIA_CHUNK_BYTES);
+  const lastChunk = Math.floor(end / DB_MEDIA_CHUNK_BYTES);
+  const chunks = await pool.query(
+    range
+      ? "SELECT chunk_index, data FROM media_object_chunks WHERE storage_key = $1 AND chunk_index BETWEEN $2 AND $3 ORDER BY chunk_index"
+      : "SELECT chunk_index, data FROM media_object_chunks WHERE storage_key = $1 ORDER BY chunk_index",
+    range ? [storageKey, firstChunk, lastChunk] : [storageKey],
+  );
+
+  const expectedChunkCount = lastChunk - firstChunk + 1;
+  if (chunks.rows.length !== expectedChunkCount) throw new Error("Stored media is incomplete");
+  const bytes = Buffer.concat(chunks.rows.map((row: { data: Buffer }) => Buffer.from(row.data)));
+  const offset = range ? start - firstChunk * DB_MEDIA_CHUNK_BYTES : 0;
+  const body = bytes.subarray(offset, offset + (end - start + 1));
 
   const headers = new Headers({
     "Content-Type": mimeType,
     "Accept-Ranges": "bytes",
+    // Media remains private because this endpoint is authenticated. Do not make
+    // personalized or permission-controlled objects publicly cacheable.
     "Cache-Control": "private, no-store",
+    "Content-Length": String(body.length),
   });
-  if (!range) {
-    headers.set("Content-Length", String(size));
-    return new Response(bytes, { status: 200, headers });
+  if (range) {
+    headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
+    return new Response(body, { status: 206, headers });
   }
-  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-  if (!match) return new Response(null, { status: 416, headers });
-  const start = match[1] ? Number(match[1]) : Math.max(size - Number(match[2]), 0);
-  const end = match[2] ? Number(match[2]) : size - 1;
-  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > end || start >= size) {
-    headers.set("Content-Range", `bytes */${size}`);
-    return new Response(null, { status: 416, headers });
-  }
-  const boundedEnd = Math.min(end, size - 1);
-  const slice = bytes.subarray(start, boundedEnd + 1);
-  headers.set("Content-Length", String(slice.length));
-  headers.set("Content-Range", `bytes ${start}-${boundedEnd}/${size}`);
-  return new Response(slice, { status: 206, headers });
+  if (body.length !== size) throw new Error("Stored media integrity check failed");
+  return new Response(body, { status: 200, headers });
 }
 
 export async function removeStoredMedia(storageKey: string): Promise<void> {
