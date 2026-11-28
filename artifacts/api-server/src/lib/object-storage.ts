@@ -156,3 +156,69 @@ export async function deleteObject(storageKey: string): Promise<void> {
   const response = await fetch(signed.url, { method: "DELETE", headers: signed.headers });
   if (!response.ok && response.status !== 404) throw new Error(`Object storage delete failed: HTTP ${response.status}`);
 }
+
+
+export interface PresignedMediaRequest {
+  url: string;
+  method: "PUT" | "GET";
+  headers: Record<string, string>;
+  expiresAt: number;
+}
+
+function presignObject(
+  cfg: StorageConfig,
+  method: "PUT" | "GET",
+  key: string,
+  expiresInSeconds: number,
+  contentType?: string,
+): PresignedMediaRequest {
+  if (!Number.isInteger(expiresInSeconds) || expiresInSeconds < 1 || expiresInSeconds > 900) {
+    throw new Error("Presigned media URL expiry must be between 1 and 900 seconds");
+  }
+  const url = objectUrl(cfg, key);
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[-:]/g, "").replace(/\\.\\d{3}Z$/, "Z");
+  const shortDate = amzDate.slice(0, 8);
+  const scope = shortDate + "/" + cfg.region + "/s3/aws4_request";
+  const signedHeaders = contentType && method === "PUT" ? "content-type;host" : "host";
+  const query: Record<string, string> = {
+    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+    "X-Amz-Credential": cfg.accessKeyId + "/" + scope,
+    "X-Amz-Date": amzDate,
+    "X-Amz-Expires": String(expiresInSeconds),
+    "X-Amz-SignedHeaders": signedHeaders,
+  };
+  const canonicalQuery = Object.entries(query)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v))
+    .join("&");
+  const canonicalHeaders = contentType && method === "PUT"
+    ? "content-type:" + contentType.trim().replace(/\\s+/g, " ") + "\\nhost:" + url.host + "\\n"
+    : "host:" + url.host + "\\n";
+  const canonicalRequest = [method, url.pathname || "/", canonicalQuery, canonicalHeaders, signedHeaders, "UNSIGNED-PAYLOAD"].join("\\n");
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("\\n");
+  const kDate = hmac("AWS4" + cfg.secretAccessKey, shortDate);
+  const kRegion = hmac(kDate, cfg.region);
+  const kService = hmac(kRegion, "s3");
+  const kSigning = hmac(kService, "aws4_request");
+  const signature = createHmac("sha256", kSigning).update(stringToSign).digest("hex");
+  url.search = canonicalQuery + "&X-Amz-Signature=" + signature;
+  return {
+    url: url.toString(),
+    method,
+    headers: contentType && method === "PUT" ? { "Content-Type": contentType } : {},
+    expiresAt: Math.floor(now.getTime() / 1000) + expiresInSeconds,
+  };
+}
+
+export function createPresignedMediaUpload(storageKey: string, mimeType: string, expiresInSeconds = 300): PresignedMediaRequest {
+  const cfg = config();
+  if (!cfg) throw new Error("S3-compatible media storage is not configured");
+  return presignObject(cfg, "PUT", "media/" + storageKey, expiresInSeconds, mimeType);
+}
+
+export function createPresignedPrivateMediaRead(storageKey: string, expiresInSeconds = 120): PresignedMediaRequest {
+  const cfg = config();
+  if (!cfg) throw new Error("S3-compatible media storage is not configured");
+  return presignObject(cfg, "GET", "media/" + storageKey, expiresInSeconds);
+}
