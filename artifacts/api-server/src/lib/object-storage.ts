@@ -241,5 +241,25 @@ export function createPresignedMediaUpload(storageKey: string, mimeType: string,
 export function createPresignedPrivateMediaRead(storageKey: string, expiresInSeconds = 120): PresignedMediaRequest {
   const cfg = config();
   if (!cfg) throw new Error("S3-compatible media storage is not configured");
-  return presignObject(cfg, "GET", "media/" + storageKey, expiresInSeconds);
+  if (!/^[a-f0-9-]{36}$/i.test(storageKey)) throw new Error("Invalid private media key");
+  const edgeBase = process.env.MEDIA_EDGE_BASE_URL?.trim();
+  const edgeSecret = process.env.MEDIA_EDGE_SIGNING_SECRET;
+  if (edgeBase && edgeSecret) {
+    if (!Number.isInteger(expiresInSeconds) || expiresInSeconds < 1 || expiresInSeconds > 300) {
+      throw new Error("Private edge URL expiry must be between 1 and 300 seconds");
+    }
+    const base = new URL(edgeBase);
+    if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash) {
+      throw new Error("Private media edge URL must be a clean HTTPS origin or base path");
+    }
+    const expiresAt = Math.floor(Date.now() / 1000) + expiresInSeconds;
+    const signature = createHmac("sha256", edgeSecret)
+      .update(storageKey + "\\n" + String(expiresAt), "utf8")
+      .digest("hex");
+    const url = new URL("/media/" + storageKey, base);
+    url.searchParams.set("expires", String(expiresAt));
+    url.searchParams.set("sig", signature);
+    return { url: url.toString(), method: "GET", headers: {}, expiresAt };
+  }
+  return presignObject(cfg, "GET", "media/" + storageKey, Math.min(expiresInSeconds, 900));
 }
