@@ -1,0 +1,13 @@
+name = "dallyletter-private-media"
+main = "src/index.mjs"
+compatibility_date = "2026-11-28"
+workers_dev = true
+
+# Create this private R2 bucket before deploying the Worker.
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "dallyletter-media"
+
+[vars]
+# Set the exact production web origins before deployment, comma-separated.
+ALLOWED_ORIGINS = ""
