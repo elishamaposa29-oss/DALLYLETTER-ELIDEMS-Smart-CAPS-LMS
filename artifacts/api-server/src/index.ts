@@ -9,6 +9,7 @@ import { ensureManagerPermissionSchema } from "./lib/ensureManagerPermissionSche
 import { startEmailNotificationDispatcher } from "./lib/email-notification-queue";
 import { startDailyAttendanceLifecycle } from "./lib/daily-attendance-lifecycle";
 import { startMediaUploadCleanup } from "./lib/media-upload-cleanup";
+import { ensureMediaUploadTicketSchema } from "./lib/media-upload-tickets";
 
 const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "4000";
 
@@ -28,6 +29,7 @@ async function startServer(): Promise<void> {
     // Manager authorization queries these tables on every protected request.
     // Empty grant tables are default-deny; schema creation grants no authority.
     await ensureManagerPermissionSchema();
+    await ensureMediaUploadTicketSchema();
     startEmailNotificationDispatcher();
     logger.info("Connect/social and manager-permission schemas verified");
     startPushDispatcher();
