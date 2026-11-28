@@ -1,5 +1,5 @@
 import { pool } from "@workspace/db";
-import { isOwnerRole, normalizeRole } from "./auth-middleware";
+import { isOwnerRole, normalizeRole } from "./role-access";
 
 type MediaPrincipal = NonNullable<Express.Request["currentUser"]>;
 
