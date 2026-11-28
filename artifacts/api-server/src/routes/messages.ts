@@ -13,6 +13,7 @@ import {
 import { requireAuth } from "../lib/auth-middleware";
 import { createPresignedPrivateMediaRead, headObject, isPrivateObjectDeliveryEnabled } from "../lib/object-storage";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { registerDirectMediaUploadRoutes } from "../lib/media-direct-upload-routes";
 import { getAIProvider } from "../lib/ai-provider";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
@@ -142,6 +143,23 @@ async function authorizeMessageMediaUpload(req: Request, res: Response, next: Ne
   }
   next();
 }
+
+const authorizeDirectMessageMediaUpload = (req: Request, res: Response, next: NextFunction): void => {
+  void authorizeMessageMediaUpload(req, res, next).catch(next);
+};
+registerDirectMediaUploadRoutes(router, "/messages/media", [requireAuth, authorizeDirectMessageMediaUpload], async request => {
+  const groupRaw = request.query.groupId;
+  const recipientRaw = request.query.recipientId;
+  const groupId = groupRaw == null || groupRaw === "" ? null : Number(groupRaw);
+  const recipientId = recipientRaw == null || recipientRaw === "" ? null : Number(recipientRaw);
+  if (groupId != null && Number.isSafeInteger(groupId) && groupId > 0 && recipientId == null) {
+    return { routeKey: "messages.media", targetType: "group-conversation", targetId: String(groupId), maxBytes: MAX_CHAT_MEDIA_SIZE_BYTES };
+  }
+  if (recipientId != null && Number.isSafeInteger(recipientId) && recipientId > 0 && groupId == null) {
+    return { routeKey: "messages.media", targetType: "direct-conversation", targetId: String(recipientId), maxBytes: MAX_CHAT_MEDIA_SIZE_BYTES };
+  }
+  return null;
+});
 
 function messageMediaPath(storageKey: string): string {
   return `/api/messages/media/${storageKey}`;
