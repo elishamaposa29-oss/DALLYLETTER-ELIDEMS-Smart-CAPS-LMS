@@ -29,7 +29,7 @@ import {
   removeStoredMedia,
 } from "../lib/media-storage";
 import { hasContentPermission } from "../lib/content-permissions";
-import { createPresignedPrivateMediaRead, headObject, isObjectStorageConfigured } from "../lib/object-storage";
+import { createPresignedPrivateMediaRead, headObject, isPrivateObjectDeliveryEnabled } from "../lib/object-storage";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
 import { authorizeTicketedMediaDelivery } from "../lib/media-delivery-access";
 import { logger } from "../lib/logger";
@@ -235,7 +235,7 @@ router.get("/lessons/media/:storageKey", mediaAccess, async (req, res): Promise<
     // after the existing resource-aware authorization check above. The short
     // lived URL is scoped to this exact object; Range is forwarded by the
     // browser to the signed GET, so large video seeking does not traverse Render.
-    if (isObjectStorageConfigured()) {
+    if (isPrivateObjectDeliveryEnabled()) {
       const metadata = await headObject(storageKey);
       if (metadata) {
         const signed = createPresignedPrivateMediaRead(storageKey, 120);
