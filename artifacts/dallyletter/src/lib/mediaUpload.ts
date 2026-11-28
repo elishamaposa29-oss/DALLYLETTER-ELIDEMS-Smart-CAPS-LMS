@@ -101,11 +101,13 @@ export async function uploadLessonMedia(
     // Remove an uploaded-but-unpublished object before falling back to the
     // existing API upload path. If deletion is temporarily unavailable, the
     // server's expiry sweeper retains and retries the cleanup.
-    await fetch(getApiUrl(mediaPath(options.groupId, "/direct-upload-abort")), {
-      method: "POST",
-      headers: { ...auth, "Content-Type": "application/json" },
-      body: JSON.stringify({ ticket: ticket.ticket, mimeType: file.type }),
-    }).catch(() => undefined);
+    if (ticket) {
+      await fetch(getApiUrl(mediaPath(options.groupId, "/direct-upload-abort")), {
+        method: "POST",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({ ticket: ticket.ticket, mimeType: file.type }),
+      }).catch(() => undefined);
+    }
     if (error instanceof Error && /^AUTHORIZATION:/i.test(error.message)) throw error;
     return await multipartFallback(file, token, options.groupId, options.onProgress);
   }
