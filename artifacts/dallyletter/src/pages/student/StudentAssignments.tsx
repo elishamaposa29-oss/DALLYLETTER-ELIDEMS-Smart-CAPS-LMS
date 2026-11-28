@@ -75,7 +75,7 @@ export default function StudentAssignments() {
     if (!file) return;
     setSubmissionFile(null);
     setUploadingSubmissionFile(true);
-    void uploadRouteMedia<{ attachmentUrl: string; fileName: string }>(file, token(), "/api/assignments/submission-material")
+    void uploadRouteMedia<{ attachmentUrl: string; fileName: string }>(file, token(), "/api/assignments/submission-material", { fileName: file.name })
       .then(result => setSubmissionFile({ url: result.attachmentUrl, fileName: result.fileName }))
       .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Attachment upload failed" }))
       .finally(() => setUploadingSubmissionFile(false));
