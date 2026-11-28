@@ -98,7 +98,7 @@ export async function uploadLessonMedia(
     options.onProgress?.(100);
     return result;
   } catch (error) {
-    if (error instanceof Error && /not authorized|unauthorized|forbidden/i.test(error.message)) throw error;
+    if (error instanceof Error && /^AUTHORIZATION:/i.test(error.message)) throw error;
     return await multipartFallback(file, token, options.groupId, options.onProgress);
   }
 }
