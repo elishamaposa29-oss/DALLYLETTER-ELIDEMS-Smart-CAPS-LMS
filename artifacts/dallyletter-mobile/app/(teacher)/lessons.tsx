@@ -102,6 +102,7 @@ export default function TeacherLessons() {
       const fileName = asset.fileName || (asset.type === "video" ? "lesson-video.mp4" : "lesson-image.jpg");
       const mimeType = asset.mimeType || (asset.type === "document" ? (asset.fileName?.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.fileName?.toLowerCase().endsWith(".doc") ? "application/msword" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") : asset.type === "video" ? "video/mp4" : "image/jpeg");
       let uploaded: { mediaUrl?: string; error?: string } = {};
+      let directTicket: { ticket: string; uploadUrl: string; method: string; headers: Record<string, string> } | null = null;
       try {
         // Prefer a presigned direct PUT when the local URI can be read as a Blob.
         // Any unsupported file URI or bucket CORS issue falls back to the stable API upload.
@@ -114,17 +115,24 @@ export default function TeacherLessons() {
           body: JSON.stringify({ mimeType, size: blob.size }),
         });
         if (!issuedResponse.ok) throw new Error("Direct upload is unavailable.");
-        const issued = await issuedResponse.json() as { ticket: string; uploadUrl: string; method: string; headers: Record<string, string> };
-        const stored = await fetch(issued.uploadUrl, { method: "PUT", headers: issued.headers || {}, body: blob });
+        directTicket = await issuedResponse.json() as { ticket: string; uploadUrl: string; method: string; headers: Record<string, string> };
+        const stored = await fetch(directTicket.uploadUrl, { method: "PUT", headers: directTicket.headers || {}, body: blob });
         if (!stored.ok) throw new Error("Direct object upload failed.");
         const completed = await fetch(getApiUrl("/api/lessons/media/direct-upload-complete"), {
           method: "POST",
           headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
-          body: JSON.stringify({ ticket: issued.ticket, mimeType }),
+          body: JSON.stringify({ ticket: directTicket.ticket, mimeType }),
         });
         if (!completed.ok) throw new Error("Direct upload verification failed.");
         uploaded = await completed.json() as { mediaUrl?: string; error?: string };
       } catch {
+        if (directTicket) {
+          await fetch(getApiUrl("/api/lessons/media/direct-upload-abort"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+            body: JSON.stringify({ ticket: directTicket.ticket, mimeType }),
+          }).catch(() => undefined);
+        }
         const form = new FormData();
         form.append("file", { uri: asset.uri, name: fileName, type: mimeType } as any);
         const response = await fetch(getApiUrl("/api/lessons/media"), {
