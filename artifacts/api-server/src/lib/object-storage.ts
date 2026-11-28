@@ -254,7 +254,7 @@ export function createPresignedPrivateMediaRead(storageKey: string, expiresInSec
     }
     const expiresAt = Math.floor(Date.now() / 1000) + expiresInSeconds;
     const signature = createHmac("sha256", edgeSecret)
-      .update(storageKey + "\\n" + String(expiresAt), "utf8")
+      .update(storageKey + "\n" + String(expiresAt), "utf8")
       .digest("hex");
     const url = new URL("/media/" + storageKey, base);
     url.searchParams.set("expires", String(expiresAt));
