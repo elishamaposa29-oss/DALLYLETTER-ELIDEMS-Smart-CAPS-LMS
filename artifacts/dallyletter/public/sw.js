@@ -24,7 +24,7 @@ self.addEventListener("activate", event => {
 async function cacheAsset(request, response) {
   if (!response.ok || response.type !== "basic" || request.headers.has("range")) return;
   const policy = response.headers.get("cache-control") || "";
-  if (/\\b(private|no-store|no-cache)\\b/i.test(policy)) return;
+  if (/\b(private|no-store|no-cache)\b/i.test(policy)) return;
   const rawSize = response.headers.get("content-length");
   if (!rawSize) return;
   const size = Number(rawSize);
