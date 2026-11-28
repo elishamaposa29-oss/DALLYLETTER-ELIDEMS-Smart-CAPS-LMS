@@ -211,7 +211,7 @@ test("the shared lesson-media endpoint invokes resource-aware ticket authorizati
 test("every file-backed media route uses ticket persistence behind its existing authorization guard", async () => {
   const routes = [
     { file: "src/routes/lessons.ts", route: "router.post(\"/lessons/media\", requireAuth", guard: "authorizeLessonMediaUpload" },
-    { file: "src/routes/assignments.ts", route: 'router.post("/material", requireAuth', guard: "canManageAcademicContent" },
+    { file: "src/routes/assignments.ts", route: 'router.post("/material", requireAuth', guard: "Teacher or platform Owner access required" },
     { file: "src/routes/assignments.ts", route: 'router.post("/submission-material", requireAuth', guard: 'req.currentUser?.role !== "student"' },
     { file: "src/routes/exercises.ts", route: 'router.post("/answer-media", requireAuth', guard: "requireAuth" },
     { file: "src/routes/exercises.ts", route: 'router.post("/question-media", requireAuth', guard: 'requireManagerPermissionIfManager("users.override.teacher")' },
