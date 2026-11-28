@@ -575,6 +575,7 @@ test("direct upload ticket and completion endpoints run through real authenticat
       }) } as Response;
     }
     if (String(init?.method) === "GET") return new Response(bytes, { status: 200, headers: { "content-type": "application/pdf" } });
+    if (String(init?.method) === "DELETE") return new Response(null, { status: 204 });
     throw new Error("Unexpected storage request");
   }) as typeof fetch;
   try {
@@ -608,6 +609,21 @@ test("direct upload ticket and completion endpoints run through real authenticat
       body: JSON.stringify({ ticket: issued.ticket, mimeType: "application/pdf" }),
     });
     assert.equal(replay.status, 400, "a consumed upload ticket must not be replayable");
+    const abandonedResponse = await originalFetch(`http://127.0.0.1:${address.port}/api/lessons/media/direct-upload-ticket`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mimeType: "application/pdf", size: bytes.length }),
+    });
+    assert.equal(abandonedResponse.status, 201);
+    const abandoned = await abandonedResponse.json() as { ticket: string; storageKey: string };
+    storageKeys.push(abandoned.storageKey);
+    const aborted = await originalFetch(`http://127.0.0.1:${address.port}/api/lessons/media/direct-upload-abort`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticket: abandoned.ticket, mimeType: "application/pdf" }),
+    });
+    assert.equal(aborted.status, 200);
+    assert.deepEqual(await aborted.json(), { aborted: true });
+    const abandonedTicket = await pool.query("SELECT status FROM media_upload_tickets WHERE storage_key=$1", [abandoned.storageKey]);
+    assert.equal(abandonedTicket.rows.length, 0, "successfully aborted ticket rows should be removed after object cleanup");
   } finally {
     globalThis.fetch = originalFetch;
     env.forEach((key, index) => {
