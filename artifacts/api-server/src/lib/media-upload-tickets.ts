@@ -4,6 +4,7 @@ import { open, readdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { pool } from "@workspace/db";
 import { getMediaDirectory, persistUploadedMedia, removeStoredMedia, streamStoredMedia } from "./media-storage";
+import { headObject, isObjectStorageConfigured } from "./object-storage";
 
 const SHA256_RE = /^[a-f0-9]{64}$/i;
 const MAX_TTL_SECONDS = 900;
@@ -118,6 +119,67 @@ async function hashResponse(response:Response):Promise<{size:number;sha256:strin
   try{while(true){const p=await reader.read();if(p.done)break;size+=p.value.byteLength;h.update(p.value);}}
   finally{reader.releaseLock();}
   return {size,sha256:h.digest("hex")};
+}
+
+function verifyMimeSignatureBytes(b:Buffer,mimeType:string):void{
+  const starts=(...v:number[])=>v.every((x,i)=>b[i]===x);
+  const ok=(mimeType==="image/jpeg"&&starts(255,216,255))||
+    (mimeType==="image/png"&&starts(137,80,78,71,13,10,26,10))||
+    (mimeType==="image/webp"&&b.subarray(0,4).toString()==="RIFF"&&b.subarray(8,12).toString()==="WEBP")||
+    (mimeType==="application/pdf"&&b.subarray(0,5).toString()==="%PDF-")||
+    (["video/mp4","video/quicktime","audio/mp4"].includes(mimeType)&&b.subarray(4,8).toString()==="ftyp")||
+    (["video/webm","audio/webm"].includes(mimeType)&&starts(26,69,223,163))||
+    (["audio/ogg","video/ogg"].includes(mimeType)&&b.subarray(0,4).toString()==="OggS")||
+    (mimeType==="audio/wav"&&b.subarray(0,4).toString()==="RIFF"&&b.subarray(8,12).toString()==="WAVE")||
+    (mimeType==="audio/mpeg"&&(b.subarray(0,3).toString()==="ID3"||(b[0]===255&&(b[1]&224)===224)))||
+    (mimeType==="application/msword"&&starts(208,207,17,224,161,177,26,225))||
+    (mimeType==="application/vnd.openxmlformats-officedocument.wordprocessingml.document"&&starts(80,75,3,4));
+  if(!ok)throw new Error("Uploaded object signature does not match declared MIME type");
+}
+
+/**
+ * Completes a browser/device-to-object-store upload. The API does not trust
+ * client-reported metadata: it checks the exact ticket binding, HEAD metadata,
+ * then streams the object back once to independently verify its byte count,
+ * SHA-256 and file signature before consuming the one-time ticket.
+ */
+export async function completeDirectMediaUpload(input:{
+  ticket:string; userId:number; routeKey:string; targetType:string; targetId:string; mimeType:string;
+}):Promise<{storageKey:string;size:number;sha256:string}>{
+  if(!isObjectStorageConfigured())throw new Error("Object storage is not configured");
+  const found=await pool.query(
+    `SELECT storage_key,mime_type,max_bytes,expected_sha256 FROM media_upload_tickets
+     WHERE token_hash=$1 AND user_id=$2 AND route_key=$3 AND target_type=$4 AND target_id=$5
+       AND mime_type=$6 AND status='issued' AND expires_at>now() LIMIT 1`,
+    [digestTicket(input.ticket),input.userId,input.routeKey,input.targetType,input.targetId,input.mimeType],
+  );
+  const ticket=found.rows[0] as {storage_key:string;mime_type:string;max_bytes:number|string;expected_sha256:string|null}|undefined;
+  if(!ticket)throw new Error("Upload ticket is invalid, expired, consumed or bound to another account/target");
+  const storageKey=String(ticket.storage_key);
+  const maxBytes=Number(ticket.max_bytes);
+  const metadata=await headObject(storageKey);
+  if(!metadata)throw new Error("Uploaded object is not present in private object storage");
+  const storedMime=String(metadata.mimeType||"").split(";")[0].trim().toLowerCase();
+  if(metadata.size<=0||metadata.size!==maxBytes||metadata.size>MAX_UPLOAD_BYTES||storedMime!==input.mimeType.toLowerCase()){
+    await removeStoredMedia(storageKey).catch(()=>undefined);
+    await pool.query("UPDATE media_upload_tickets SET status='rejected' WHERE token_hash=$1 AND status='issued'",[digestTicket(input.ticket)]).catch(()=>undefined);
+    throw new Error("Uploaded object size or MIME metadata does not match the authorized ticket");
+  }
+  const stored=await streamStoredMedia(storageKey);
+  if(!stored||stored.status!==200)throw new Error("Uploaded object could not be read back for verification");
+  const actual=await hashResponse(stored);
+  if(actual.size!==metadata.size||(ticket.expected_sha256&&actual.sha256!==String(ticket.expected_sha256).toLowerCase())){
+    await removeStoredMedia(storageKey).catch(()=>undefined);
+    await pool.query("UPDATE media_upload_tickets SET status='rejected' WHERE token_hash=$1 AND status='issued'",[digestTicket(input.ticket)]).catch(()=>undefined);
+    throw new Error("Uploaded object byte count or SHA-256 checksum does not match the authorized ticket");
+  }
+  const prefixResponse=await streamStoredMedia(storageKey,"bytes=0-15");
+  if(!prefixResponse||prefixResponse.status!==206)throw new Error("Uploaded object signature could not be verified");
+  const prefixBytes=prefixResponse.body?Buffer.from(await prefixResponse.arrayBuffer()):Buffer.alloc(0);
+  verifyMimeSignatureBytes(prefixBytes,input.mimeType);
+  await markMediaUploadVerified({ticket:input.ticket,userId:input.userId,routeKey:input.routeKey,targetType:input.targetType,targetId:input.targetId,mimeType:input.mimeType,size:actual.size,sha256:actual.sha256});
+  const consumed=await consumeMediaUploadTicket({ticket:input.ticket,userId:input.userId,routeKey:input.routeKey,targetType:input.targetType,targetId:input.targetId,mimeType:input.mimeType});
+  return {storageKey:consumed.storageKey,size:consumed.size,sha256:consumed.sha256};
 }
 
 export async function persistTicketedMediaUpload(input:{
