@@ -41,6 +41,9 @@ const runs = Math.min(Math.max(Number(process.env.MEDIA_BENCH_RUNS || 8), 2), 50
 const rangeHeader = process.env.MEDIA_BENCH_RANGE || "bytes=0-1048575";
 const includeRange = process.env.MEDIA_BENCH_INCLUDE_RANGE !== "false";
 const timeoutMs = Math.min(Math.max(Number(process.env.MEDIA_BENCH_TIMEOUT_MS || 120000), 1000), 600000);
+// Small responses cannot produce a meaningful throughput estimate; timer and
+// scheduling noise dominates transfer time for tiny files (e.g. 51-byte PDFs).
+const minimumThroughputBytes = Math.min(Math.max(Number(process.env.MEDIA_BENCH_MIN_THROUGHPUT_BYTES || 262144), 1024), 16 * 1024 * 1024);
 let headers = {};
 try {
   headers = process.env.MEDIA_BENCH_HEADERS ? JSON.parse(process.env.MEDIA_BENCH_HEADERS) : {};
@@ -135,8 +138,9 @@ function requestSample(mode, run) {
           acceptRanges: response.headers["accept-ranges"] ?? "not-reported",
           contentRange: response.headers["content-range"] ?? null,
           rangeHonored: mode !== "range" || response.statusCode === 206,
-          encodedMiBPerSecond: elapsedMs > 0 ? Number((encodedBodyBytes / 1048576 / (elapsedMs / 1000)).toFixed(3)) : null,
-          decodedMiBPerSecond: elapsedMs > 0 ? Number((decodedBodyBytes / 1048576 / (elapsedMs / 1000)).toFixed(3)) : null,
+          throughputEligible: Math.max(encodedBodyBytes, decodedBodyBytes) >= minimumThroughputBytes,
+          encodedMiBPerSecond: elapsedMs > 0 && encodedBodyBytes >= minimumThroughputBytes ? Number((encodedBodyBytes / 1048576 / (elapsedMs / 1000)).toFixed(3)) : null,
+          decodedMiBPerSecond: elapsedMs > 0 && decodedBodyBytes >= minimumThroughputBytes ? Number((decodedBodyBytes / 1048576 / (elapsedMs / 1000)).toFixed(3)) : null,
         });
       });
       response.pipe(decoder);
@@ -201,6 +205,8 @@ try {
     urlOrigin: parsedUrl.origin,
     path: parsedUrl.pathname,
     requestedRunsPerMode: runs,
+    minimumThroughputSampleBytes: minimumThroughputBytes,
+    throughputMethodology: "Per-sample MiB/s is omitted (null) below the configured minimum payload size because fixed request/timer overhead dominates tiny transfers. Use representative media payloads for throughput comparisons.",
     rangeHeader: includeRange ? rangeHeader : null,
     modes: [full, ...(range ? [range] : [])],
     totalEncodedResponseBodyBytes: all.reduce((sum, row) => sum + row.encodedBodyBytes, 0),
@@ -208,7 +214,7 @@ try {
     measuredClientVisibleEgressMiB: Number((all.reduce((sum, row) => sum + row.encodedBodyBytes, 0) / 1048576).toFixed(4)),
     aggregateCompressionRatio: all.reduce((sum, row) => sum + row.encodedBodyBytes, 0) /
       Math.max(1, all.reduce((sum, row) => sum + row.decodedBodyBytes, 0)),
-    note: "Encoded bytes are actual compressed HTTP response-body bytes received by this client; decoded bytes are counted after decompression. The egress MiB figure is client-visible body transfer, not provider-billed egress. Neither includes TLS/HTTP overhead. Confirm billed Render/CDN egress in provider metrics; this script does not claim production cost savings.",
+    note: "Encoded bytes are actual compressed HTTP response-body bytes received by this client; decoded bytes are counted after decompression. The egress MiB figure is client-visible body transfer, not provider-billed egress. Neither includes TLS/HTTP overhead. Throughput values are omitted for payloads below minimumThroughputSampleBytes to avoid misleading rates from tiny fixtures. Confirm billed Render/CDN egress in provider metrics; this script does not claim production cost savings.",
   };
   console.log(JSON.stringify(summary, null, 2));
   if (all.some(row => row.status < 200 || row.status >= 300)) process.exitCode = 1;
