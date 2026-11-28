@@ -2,13 +2,15 @@ import process from "node:process";
 
 const base = new URL((process.env.PUBLIC_SITE_URL || "https://elishamaposa29-oss-dallyletter-elid-gamma.vercel.app").replace(/\/+$/, "") + "/");
 const timeoutMs = Number(process.env.PUBLIC_AUDIT_TIMEOUT_MS || 15000);
+const expectedBuildSha = (process.env.EXPECTED_BUILD_SHA || "").trim();
 const errors = [];
 const warnings = [];
 const results = [];
+const imageChecks = [];
 const fail = (message) => errors.push(message);
 const warn = (message) => warnings.push(message);
 
-async function request(path, accept = "text/html,application/xml,text/plain,*/*") {
+async function request(path, accept = "text/html,application/xml,text/plain,*/*", userAgent = "DallyletterPublicDiscoveryAudit/1.0 (+public-site-health-check)") {
   const url = new URL(path, base);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -16,7 +18,7 @@ async function request(path, accept = "text/html,application/xml,text/plain,*/*"
     const response = await fetch(url, {
       redirect: "follow",
       signal: controller.signal,
-      headers: { "user-agent": "DallyletterPublicDiscoveryAudit/1.0 (+public-site-health-check)", accept },
+      headers: { "user-agent": userAgent, accept },
     });
     if (new URL(response.url).origin !== base.origin) fail(`Unexpected cross-origin redirect for ${url.pathname}: ${response.url}`);
     return { response, body: await response.text(), url };
@@ -25,6 +27,38 @@ async function request(path, accept = "text/html,application/xml,text/plain,*/*"
     return null;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+if (expectedBuildSha) {
+  const deadline = Date.now() + 10 * 60 * 1000;
+  let deployedSha = "";
+  let matched = false;
+  while (Date.now() < deadline) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(base, {
+        cache: "no-store",
+        redirect: "follow",
+        signal: controller.signal,
+        headers: { "user-agent": "Googlebot/2.1 (+http://www.google.com/bot.html)", accept: "text/html" },
+      });
+      const body = await response.text();
+      deployedSha = extract(body, /<meta\s+name=["']dallyletter-build-sha["']\s+content=["']([^"']+)["']/i);
+      if (response.ok && new URL(response.url).origin === base.origin && deployedSha === expectedBuildSha) {
+        matched = true;
+        break;
+      }
+    } catch {
+      // Vercel may still be building or propagating the production alias.
+    } finally {
+      clearTimeout(timer);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+  }
+  if (!matched) {
+    fail("Canonical production did not expose expected build " + expectedBuildSha + " within 10 minutes; last observed build was " + (deployedSha || "(missing)"));
   }
 }
 
@@ -40,6 +74,7 @@ if (robotsResult) {
     if (!body.includes(`User-agent: ${bot}`)) fail(`robots.txt is missing ${bot}`);
   }
   if (!body.includes(`Sitemap: ${new URL("/sitemap.xml", base).href}`)) fail("robots.txt does not advertise the canonical sitemap URL");
+  if (!body.includes(`Sitemap: ${new URL("/image-sitemap.xml", base).href}`)) fail("robots.txt does not advertise the canonical image sitemap URL");
   for (const route of ["/student", "/teacher", "/manager", "/admin", "/profile", "/profile-hub", "/record-book", "/reset-password"]) {
     if (!body.includes(`Disallow: ${route}`)) fail(`robots.txt does not protect private route ${route}`);
   }
@@ -62,6 +97,51 @@ if (sitemapResult) {
     } catch {
       fail(`Invalid sitemap URL: ${raw}`);
     }
+  }
+}
+
+const imageSitemapResult = await request("/image-sitemap.xml", "application/xml,text/xml");
+if (imageSitemapResult) {
+  if (!imageSitemapResult.response.ok) fail("image-sitemap.xml returned HTTP " + imageSitemapResult.response.status);
+  if (!imageSitemapResult.body.startsWith('<?xml') || !imageSitemapResult.body.includes('<urlset ') || !imageSitemapResult.body.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
+    fail("image-sitemap.xml is not a valid image sitemap");
+  }
+  const imageEntries = [...imageSitemapResult.body.matchAll(/<url>([\s\S]*?)<\/url>/g)].map((match) => match[1]);
+  const requiredImageEntries = [
+    { page: "/", image: "/social/dallyletter-og.png" },
+    { page: "/", image: "/images/learner-dashboard-preview.svg" },
+    { page: "/", image: "/images/prefect-dashboard-preview.svg" },
+    { page: "/", image: "/founder/elisha-maposa-origin.jpg" },
+    { page: "/founder-story/", image: "/founder/elisha-maposa-origin.jpg" },
+  ];
+  for (const entry of requiredImageEntries) {
+    const pageUrl = base.origin + entry.page;
+    const imageUrl = base.origin + entry.image;
+    const pageEntry = imageEntries.find((xml) => xml.includes("<loc>" + pageUrl + "</loc>"));
+    if (!pageEntry || !pageEntry.includes("<image:loc>" + imageUrl + "</image:loc>")) {
+      fail("image-sitemap.xml is missing " + entry.image + " under " + entry.page);
+    }
+  }
+  const imageUrls = new Set();
+  for (const xml of imageEntries) {
+    for (const match of xml.matchAll(/<image:loc>\s*([^<]+)\s*<\/image:loc>/gi)) {
+      try {
+        const imageUrl = new URL(match[1].trim());
+        if (imageUrl.origin !== base.origin) fail("Image sitemap contains a non-canonical image URL: " + imageUrl.href);
+        else imageUrls.add(imageUrl.href);
+      } catch {
+        fail("Image sitemap contains an invalid image URL: " + match[1]);
+      }
+    }
+  }
+  for (const imageUrl of imageUrls) {
+    const imageResult = await request(imageUrl, "image/avif,image/webp,image/jpeg,image/png,image/svg+xml,*/*", "Googlebot/2.1 (+http://www.google.com/bot.html)");
+    if (!imageResult) continue;
+    const contentType = imageResult.response.headers.get("content-type") || "";
+    if (!imageResult.response.ok) fail("Googlebot image request returned HTTP " + imageResult.response.status + " for " + imageUrl);
+    if (!contentType.toLowerCase().startsWith("image/")) fail("Googlebot image request returned non-image content type " + contentType + " for " + imageUrl);
+    if (!imageResult.body.length) fail("Googlebot image request returned an empty body for " + imageUrl);
+    imageChecks.push({ url: imageUrl, status: imageResult.response.status, contentType, bodyCharacters: imageResult.body.length });
   }
 }
 
@@ -88,6 +168,9 @@ if (homepage) {
   if (canonical !== base.href) fail(`Homepage canonical is incorrect: ${canonical || "(missing)"}`);
   if (/noindex/i.test(extract(homepage.body, /<meta\s+name=["']robots["']\s+content=["']([^"']+)["']/i))) fail("Homepage is marked noindex");
   if (!homepage.body.includes("Elisha Maposa")) fail("Homepage HTML omits the creator attribution");
+  for (const imagePath of ["/founder/elisha-maposa-origin-480.avif", "/founder/elisha-maposa-origin-640.avif", "/images/learner-dashboard-preview.svg", "/images/prefect-dashboard-preview.svg"]) {
+    if (!homepage.body.includes(imagePath)) fail("Homepage gallery is missing " + imagePath);
+  }
   if (!homepage.body.includes("application/ld+json")) fail("Homepage has no JSON-LD structured data");
 }
 
@@ -127,6 +210,7 @@ const report = {
   origin: base.origin,
   sitemapPages: uniquePaths.length,
   successfulPages: results.length,
+  googlebotImageRequests: imageChecks,
   warnings,
   errors,
   pages: results,

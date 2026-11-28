@@ -40,6 +40,55 @@ if (!educationSeoTags.templates.past_papers_and_exams.includes("[Subject] past p
 }
 const sitemapPath = path.join(root, "sitemap.xml");
 const sitemap = fs.readFileSync(sitemapPath, "utf8");
+const imageSitemapPath = path.join(root, "image-sitemap.xml");
+if (!fs.existsSync(imageSitemapPath)) throw new Error("Dedicated image-sitemap.xml is missing from the production build");
+const imageSitemap = fs.readFileSync(imageSitemapPath, "utf8");
+if (!imageSitemap.startsWith('<?xml') || !imageSitemap.includes('<urlset ') || !imageSitemap.includes("http://www.google.com/schemas/sitemap-image/1.1")) {
+  throw new Error("image-sitemap.xml is not a valid image sitemap");
+}
+const imageSitemapEntries = [...imageSitemap.matchAll(/<url>([\s\S]*?)<\/url>/g)].map((match) => match[1]);
+const requiredImageEntries = [
+  { page: "/", image: "/social/dallyletter-og.png" },
+  { page: "/", image: "/images/learner-dashboard-preview.svg" },
+  { page: "/", image: "/images/prefect-dashboard-preview.svg" },
+  { page: "/", image: "/founder/elisha-maposa-origin.jpg" },
+  { page: "/founder-story/", image: "/founder/elisha-maposa-origin.jpg" },
+];
+for (const entry of requiredImageEntries) {
+  const pageUrl = siteUrl + entry.page;
+  const imageUrl = siteUrl + entry.image;
+  const pageEntry = imageSitemapEntries.find((xml) => xml.includes("<loc>" + pageUrl + "</loc>"));
+  if (!pageEntry || !pageEntry.includes("<image:loc>" + imageUrl + "</image:loc>")) {
+    throw new Error("Image sitemap is missing " + entry.image + " under " + entry.page);
+  }
+  const imageFile = path.join(root, entry.image.slice(1));
+  if (!fs.existsSync(imageFile) || fs.statSync(imageFile).size === 0) {
+    throw new Error("Image sitemap points to a missing or empty build asset: " + entry.image);
+  }
+}
+const founderOriginal = path.join(root, "founder", "IMG_20260706_100838.jpg");
+const founderCanonical = path.join(root, "founder", "elisha-maposa-origin.jpg");
+if (!fs.existsSync(founderOriginal) || !fs.existsSync(founderCanonical)) {
+  throw new Error("Original and canonical founder portrait files must both be present");
+}
+if (!fs.readFileSync(founderOriginal).equals(fs.readFileSync(founderCanonical))) {
+  throw new Error("Canonical founder portrait must remain byte-identical to the supplied original");
+}
+for (const width of [480, 640, 768, 1200]) {
+  for (const extension of ["avif", "webp", "jpg"]) {
+    const derivative = path.join(root, "founder", "elisha-maposa-origin-" + width + "." + extension);
+    if (!fs.existsSync(derivative) || fs.statSync(derivative).size === 0) {
+      throw new Error("Responsive founder image derivative is missing or empty: " + width + "." + extension);
+    }
+  }
+}
+for (const route of ["/", "/founder-story/"]) {
+  const htmlPath = route === "/" ? path.join(root, "public-site", "index.html") : path.join(root, "founder-story", "index.html");
+  const html = fs.readFileSync(htmlPath, "utf8");
+  if (!html.includes('<figure class="founder-portrait">') || !html.includes("elisha-maposa-origin-480.avif") || !html.includes("elisha-maposa-origin-1200.avif") || !html.includes('loading="lazy"') || !html.includes('fetchpriority="low"') || !html.includes('alt=\"Elisha Maposa')) {
+    throw new Error("Founder portrait is missing accessible, lazy-loaded responsive markup on " + route);
+  }
+}
 const urls = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]);
 
 if (urls.length < 65) throw new Error("Expected at least 65 public sitemap URLs, including individual education search pages; got " + urls.length);
@@ -134,7 +183,7 @@ for (const url of urls) {
     if (!href.startsWith("/") || href.startsWith("//")) continue;
     const linkPath = new URL(href, siteUrl).pathname;
     if (appRoutePrefixes.some(prefix => linkPath === prefix || linkPath.startsWith(prefix + "/"))) continue;
-    if (linkPath === "/favicon.svg" || linkPath === "/manifest.json" || linkPath.startsWith("/icons/") || linkPath.startsWith("/social/") || linkPath.startsWith("/assets/")) {
+    if (linkPath === "/favicon.svg" || linkPath === "/manifest.json" || linkPath.startsWith("/icons/") || linkPath.startsWith("/social/") || linkPath.startsWith("/assets/") || linkPath.startsWith("/founder/") || linkPath.startsWith("/images/")) {
       if (!fs.existsSync(path.join(root, linkPath))) throw new Error("Missing linked static asset " + linkPath + " on " + url);
       continue;
     }
@@ -173,8 +222,9 @@ for (const privatePath of ["/student", "/teacher", "/manager", "/admin", "/profi
 }
 if (!robots.includes(siteUrl + "/sitemap.xml")) throw new Error("robots.txt sitemap reference missing");
 const sitemapDirectives = robots.split(/\r?\n/).filter(line => /^\s*Sitemap:/i.test(line));
-if (sitemapDirectives.length !== 1 || sitemapDirectives[0].trim() !== "Sitemap: " + siteUrl + "/sitemap.xml") {
-  throw new Error("robots.txt must contain exactly one sitemap directive on the canonical production hostname");
+const expectedSitemaps = ["Sitemap: " + siteUrl + "/sitemap.xml", "Sitemap: " + siteUrl + "/image-sitemap.xml"];
+if (sitemapDirectives.length !== expectedSitemaps.length || expectedSitemaps.some((expected) => !sitemapDirectives.some((line) => line.trim() === expected))) {
+  throw new Error("robots.txt must advertise both canonical XML sitemaps and no non-canonical sitemap URLs");
 }
 for (const crawler of ["OAI-SearchBot", "ChatGPT-User", "GPTBot", "ClaudeBot", "Claude-SearchBot", "PerplexityBot", "Googlebot", "Bingbot"]) {
   if (!robots.includes("User-agent: " + crawler)) throw new Error("robots.txt is missing the public discovery rule for " + crawler);
