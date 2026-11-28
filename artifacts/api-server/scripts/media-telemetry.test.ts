@@ -35,3 +35,32 @@ test("S3-compatible adapter exposes the provider-neutral storage contract", () =
   assert.equal(typeof s3CompatibleMediaProvider.get, "function");
   assert.equal(typeof s3CompatibleMediaProvider.delete, "function");
 });
+
+import { createPresignedMediaUpload, createPresignedPrivateMediaRead } from "../src/lib/object-storage.ts";
+
+test("presigned media URLs bind methods, content type and short expiries", () => {
+  const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION"] as const;
+  const prior = env.map(key => process.env[key]);
+  process.env.MEDIA_S3_ENDPOINT = "https://objects.example.test";
+  process.env.MEDIA_S3_BUCKET = "private-media";
+  process.env.MEDIA_S3_ACCESS_KEY_ID = "test-access";
+  process.env.MEDIA_S3_SECRET_ACCESS_KEY = "test-secret";
+  process.env.MEDIA_S3_REGION = "auto";
+  try {
+    const key = "00000000-0000-4000-8000-000000000000";
+    const upload = createPresignedMediaUpload(key, "image/png", 180);
+    assert.equal(upload.method, "PUT");
+    assert.equal(upload.headers["Content-Type"], "image/png");
+    assert.ok(upload.url.includes("X-Amz-Signature="));
+    assert.ok(upload.url.includes("X-Amz-Expires=180"));
+    const read = createPresignedPrivateMediaRead(key, 90);
+    assert.equal(read.method, "GET");
+    assert.ok(read.url.includes("X-Amz-Expires=90"));
+    assert.ok(upload.expiresAt <= Math.floor(Date.now() / 1000) + 181);
+  } finally {
+    env.forEach((key, index) => {
+      if (prior[index] === undefined) delete process.env[key];
+      else process.env[key] = prior[index];
+    });
+  }
+});
