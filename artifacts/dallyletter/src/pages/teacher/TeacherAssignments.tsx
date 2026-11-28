@@ -66,7 +66,7 @@ export default function TeacherAssignments() {
   const uploadMaterial = (file: File | undefined) => {
     if (!file) return;
     setMaterialUploading(true);
-    void uploadRouteMedia<{ attachmentUrl: string }>(file, token(), "/api/assignments/material")
+    void uploadRouteMedia<{ attachmentUrl: string }>(file, token(), "/api/assignments/material", { fileName: file.name })
       .then(result => setForm(formState => ({ ...formState, attachmentUrl: result.attachmentUrl })))
       .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Material upload failed" }))
       .finally(() => setMaterialUploading(false));
