@@ -38,12 +38,24 @@ registerDirectMediaUploadRoutes(router, "/material", [requireAuth], async reques
   const actor = request.currentUser!;
   if (!canManageAcademicContent(actor) || (canAccessManager(actor) && !isOwnerRole(actor.role))) return null;
   return { routeKey: "assignments.material", targetType: "teacher-material-library", targetId: String(actor.id), maxBytes: MAX_MEDIA_SIZE_BYTES };
+}, {
+  onCompleted: async (request, uploaded) => ({
+    attachmentUrl: `/api/lessons/media/${uploaded.storageKey}?type=${encodeURIComponent(String(request.body.mimeType))}`,
+    fileName: typeof request.body.fileName === "string" ? request.body.fileName.slice(0, 255) : "assignment-material",
+    mimeType: String(request.body.mimeType), size: uploaded.size,
+  }),
 });
 
 registerDirectMediaUploadRoutes(router, "/submission-material", [requireAuth], async request => {
   const actor = request.currentUser!;
   if (actor.role !== "student") return null;
   return { routeKey: "assignments.submission-material", targetType: "learner-submission-draft", targetId: String(actor.id), maxBytes: MAX_MEDIA_SIZE_BYTES };
+}, {
+  onCompleted: async (request, uploaded) => ({
+    attachmentUrl: `/api/lessons/media/${uploaded.storageKey}?type=${encodeURIComponent(String(request.body.mimeType))}`,
+    fileName: typeof request.body.fileName === "string" ? request.body.fileName.slice(0, 255) : "submission-material",
+    mimeType: String(request.body.mimeType), size: uploaded.size,
+  }),
 });
 
 function normalizeGrade(value: string | null | undefined): string {
