@@ -6,6 +6,7 @@ import { RaiseHandBody, ListHandRaisesQueryParams } from "@workspace/api-zod";
 import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, removeStoredMedia } from "../lib/media-storage";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { registerDirectMediaUploadRoutes } from "../lib/media-direct-upload-routes";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -46,6 +47,39 @@ router.post("/raise-hand", requireAuth, async (req, res): Promise<void> => {
   });
 
   res.status(201).json({ ...handRaise, createdAt: handRaise.createdAt.toISOString() });
+});
+
+registerDirectMediaUploadRoutes(router, "/raise-hand/with-media", [requireAuth], async request => {
+  const actor = request.currentUser!;
+  const classId = Number(request.body?.classId);
+  if (actor.role !== "student" || !Number.isSafeInteger(classId) || classId <= 0) return null;
+  const enrollment = await pool.query(
+    "SELECT 1 FROM public.enrollments WHERE learner_id=$1 AND class_id=$2 AND status='active' LIMIT 1",
+    [actor.id, classId],
+  );
+  if (!enrollment.rows.length) return null;
+  return { routeKey: "handRaises.raise-hand.with-media", targetType: "class-hand-raise", targetId: String(classId), maxBytes: MAX_MEDIA_SIZE_BYTES };
+}, {
+  onCompleted: async (request, uploaded) => {
+    const actor = request.currentUser!;
+    const classId = Number(request.body?.classId);
+    const question = typeof request.body?.question === "string" ? request.body.question.slice(0, 5000) : "";
+    const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+    const mediaUrl = `/api/lessons/media/${uploaded.storageKey}?type=${encodeURIComponent(mimeType)}`;
+    try {
+      const [handRaise] = await db.insert(handRaisesTable).values({
+        studentId: actor.id, studentName: actor.name, classId, question: question || null,
+        mediaUrl, mediaOwned: true, isResolved: false,
+      }).returning();
+      await db.insert(activityLogTable).values({
+        type: "hand_raised", description: actor.name + " raised a hand with an attachment", actorName: actor.name,
+      });
+      return { ...handRaise, createdAt: handRaise.createdAt.toISOString() };
+    } catch (error) {
+      await removeStoredMedia(uploaded.storageKey).catch(() => undefined);
+      throw error;
+    }
+  },
 });
 
 // POST /raise-hand/with-media — atomically upload a supported attachment and create the hand raise.
