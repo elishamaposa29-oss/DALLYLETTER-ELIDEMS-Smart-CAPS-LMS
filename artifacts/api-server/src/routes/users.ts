@@ -16,7 +16,7 @@ import {
 import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
-import { createPresignedPrivateMediaRead, headObject, isObjectStorageConfigured } from "../lib/object-storage";
+import { createPresignedPrivateMediaRead, headObject, isPrivateObjectDeliveryEnabled } from "../lib/object-storage";
 import { canReadPrivateProfileByRole, serializePublicProfile, maskPayoutDestination } from "../lib/profile-access-policy";
 import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
@@ -1227,7 +1227,7 @@ router.get("/qualifications/:id/document", requireAuth, requireManagerPermission
   // The document and its owner/scope have been authorized above. Redirect only
   // when the exact object exists in private object storage; old PostgreSQL-backed
   // documents continue through the bounded, streaming API fallback.
-  if(isObjectStorageConfigured()){
+  if(isPrivateObjectDeliveryEnabled()){
     const metadata=await headObject(String(doc.storage_key));
     if(metadata){
       const signed=createPresignedPrivateMediaRead(String(doc.storage_key),120);
