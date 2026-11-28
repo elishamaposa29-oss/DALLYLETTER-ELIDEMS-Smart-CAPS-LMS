@@ -7,7 +7,7 @@ import handRaisesRouter from "../src/routes/handRaises";
 import messagesRouter from "../src/routes/messages";
 import usersRouter from "../src/routes/users";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -16,6 +16,7 @@ import {
   cleanupExpiredMediaUploads,
   cleanupOrphanedMediaStagingFiles,
   cleanupUnreferencedConsumedMedia,
+  completeDirectMediaUpload,
   consumeMediaUploadTicket,
   ensureMediaUploadTicketSchema,
   issueMediaUploadTicket,
@@ -486,5 +487,56 @@ test("authorized private media redirects to an object-scoped short-lived URL aft
       else process.env[key] = prior[index];
     });
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+});
+
+
+test("direct object upload completion verifies HEAD metadata, actual bytes, checksum and MIME signature", async () => {
+  const bytes = Buffer.from("%PDF-1.7\\nDallyletter direct upload integration test\\n%%EOF\\n");
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const ticket = await issueMediaUploadTicket({
+    userId: userA, routeKey: "lessons.media", targetType: "lesson-media-library",
+    targetId: String(userA), mimeType: "application/pdf", maxBytes: bytes.length, expectedSha256: sha256,
+  });
+  storageKeys.push(ticket.storageKey);
+  const env = ["MEDIA_S3_ENDPOINT","MEDIA_S3_BUCKET","MEDIA_S3_ACCESS_KEY_ID","MEDIA_S3_SECRET_ACCESS_KEY","MEDIA_S3_REGION"] as const;
+  const prior = env.map(key => process.env[key]);
+  const originalFetch = globalThis.fetch;
+  process.env.MEDIA_S3_ENDPOINT = "https://objects.example.test";
+  process.env.MEDIA_S3_BUCKET = "private-media";
+  process.env.MEDIA_S3_ACCESS_KEY_ID = "test-access";
+  process.env.MEDIA_S3_SECRET_ACCESS_KEY = "test-secret";
+  process.env.MEDIA_S3_REGION = "auto";
+  const methods: string[] = [];
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const method = String(init?.method);
+    methods.push(method);
+    if (method === "HEAD") {
+      return { status: 200, ok: true, headers: new Headers({
+        "content-length": String(bytes.length), "content-type": "application/pdf",
+      }) } as Response;
+    }
+    if (method === "GET") {
+      return new Response(bytes, { status: 200, headers: { "content-type": "application/pdf" } });
+    }
+    throw new Error("Unexpected object storage method: " + method);
+  }) as typeof fetch;
+  try {
+    const completed = await completeDirectMediaUpload({
+      ticket: ticket.ticket, userId: userA, routeKey: "lessons.media",
+      targetType: "lesson-media-library", targetId: String(userA), mimeType: "application/pdf",
+    });
+    assert.deepEqual(completed, { storageKey: ticket.storageKey, size: bytes.length, sha256 });
+    assert.deepEqual(methods, ["HEAD", "GET"]);
+    const saved = await pool.query("SELECT status,uploaded_size,uploaded_sha256 FROM media_upload_tickets WHERE id=$1", [ticket.ticketId]);
+    assert.equal(saved.rows[0]?.status, "consumed");
+    assert.equal(Number(saved.rows[0]?.uploaded_size), bytes.length);
+    assert.equal(String(saved.rows[0]?.uploaded_sha256).trim(), sha256);
+  } finally {
+    globalThis.fetch = originalFetch;
+    env.forEach((key, index) => {
+      if (prior[index] === undefined) delete process.env[key];
+      else process.env[key] = prior[index];
+    });
   }
 });
