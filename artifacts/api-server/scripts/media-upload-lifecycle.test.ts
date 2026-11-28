@@ -249,6 +249,20 @@ test("HTTP media delivery denies another account's unreferenced submission draft
   }
 });
 
+test("sensitive upload routes authorize the actor before Multer accepts file bytes", async () => {
+  const [users, messages, handRaises, exercises] = await Promise.all([
+    readFile("src/routes/users.ts", "utf8"),
+    readFile("src/routes/messages.ts", "utf8"),
+    readFile("src/routes/handRaises.ts", "utf8"),
+    readFile("src/routes/exercises.ts", "utf8"),
+  ]);
+  assert.ok(users.indexOf('if (normalizeRole(req.currentUser!.role) !== "teacher")') < users.indexOf('teacherDocumentUpload.single("file")'));
+  assert.ok(users.indexOf("authorizeQualificationDocumentUpload, (req,res,next)") < users.indexOf('qualificationUpload.single("file")'));
+  assert.ok(messages.indexOf("authorizeMessageMediaUpload(req, res") < messages.indexOf('voiceUpload.single("file")'));
+  assert.ok(handRaises.indexOf('req.currentUser?.role !== "student"') < handRaises.indexOf('handRaiseUpload.single("file")'));
+  assert.ok(exercises.indexOf('req.currentUser?.role !== learnerRole') < exercises.indexOf('exerciseAnswerMediaUpload.single("file")'));
+});
+
 test("the shared lesson-media endpoint invokes resource-aware ticket authorization", async () => {
   const routeSource = await readFile("src/routes/lessons.ts", "utf8");
   const policySource = await readFile("src/lib/media-delivery-access.ts", "utf8");
