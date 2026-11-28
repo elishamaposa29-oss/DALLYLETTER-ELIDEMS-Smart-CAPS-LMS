@@ -1,9 +1,14 @@
 import test, { after, before } from "node:test";
 import express from "express";
 import lessonsRouter from "../src/routes/lessons";
+import assignmentsRouter from "../src/routes/assignments";
+import exercisesRouter from "../src/routes/exercises";
+import handRaisesRouter from "../src/routes/handRaises";
+import messagesRouter from "../src/routes/messages";
+import usersRouter from "../src/routes/users";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pool } from "@workspace/db";
@@ -351,4 +356,71 @@ test("every file-backed media route uses ticket persistence behind its existing 
     assert.ok(source.includes(route.guard), `Missing route authorization contract ${route.guard}`);
     assert.ok(source.includes("persistTicketedMediaUpload"), `Route file ${route.file} bypasses ticketed persistence`);
   }
+});
+
+
+test("real HTTP upload routes reject unauthenticated requests before multipart parsing", async () => {
+  await ensureMediaDirectory();
+  const app = express();
+  app.use("/api", lessonsRouter, assignmentsRouter, exercisesRouter, handRaisesRouter, messagesRouter, usersRouter);
+  const server = app.listen(0);
+  await new Promise<void>(resolve => server.once("listening", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const paths = [
+    "/api/lessons/media",
+    "/api/material",
+    "/api/submission-material",
+    "/api/answer-media",
+    "/api/question-media",
+    "/api/raise-hand/with-media",
+    "/api/messages/media",
+    "/api/users/me/avatar",
+    "/api/users/me/cover",
+    "/api/users/me/teacher-documents",
+    "/api/qualifications/1/document",
+  ];
+  try {
+    for (const route of paths) {
+      const response = await fetch(`http://127.0.0.1:${address.port}${route}`, { method: "POST" });
+      assert.equal(response.status, 401, `Unauthenticated upload route must deny: ${route}`);
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+});
+
+test("real HTTP role guards reject upload bytes before Multer writes files", async () => {
+  await ensureMediaDirectory();
+  const before = new Set(await readdir(getMediaDirectory()).catch(() => [] as string[]));
+  const cases = [
+    { route: "/api/lessons/media", actor: { id: 910001, role: "student", isManager: false }, status: 403 },
+    { route: "/api/material", actor: { id: 910002, role: "student", isManager: false }, status: 403 },
+    { route: "/api/submission-material", actor: { id: 910003, role: "teacher", isManager: false }, status: 403 },
+    { route: "/api/answer-media", actor: { id: 910004, role: "teacher", isManager: false }, status: 403 },
+    { route: "/api/question-media", actor: { id: 910005, role: "student", isManager: false }, status: 403 },
+    { route: "/api/raise-hand/with-media", actor: { id: 910006, role: "teacher", isManager: false }, status: 403 },
+    { route: "/api/users/me/teacher-documents", actor: { id: 910007, role: "student", isManager: false }, status: 403 },
+  ];
+  for (const item of cases) {
+    const app = express();
+    app.use((req, _res, next) => { Reflect.set(req, "currentUser", item.actor); next(); });
+    app.use("/api", lessonsRouter, messagesRouter, handRaisesRouter, usersRouter);
+    app.use("/api", assignmentsRouter);
+    app.use("/api", exercisesRouter);
+    const server = app.listen(0);
+    await new Promise<void>(resolve => server.once("listening", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    try {
+      const form = new FormData();
+      form.append("file", new Blob([Buffer.from("%PDF-1.7\\nroute guard test\\n%%EOF")], { type: "application/pdf" }), "guard-test.pdf");
+      const response = await fetch(`http://127.0.0.1:${address.port}${item.route}`, { method: "POST", body: form });
+      assert.equal(response.status, item.status, `Role guard must reject before file processing: ${item.route}`);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  }
+  const afterFiles = new Set(await readdir(getMediaDirectory()).catch(() => [] as string[]));
+  assert.deepEqual([...afterFiles].filter(file => !before.has(file)), [], "Rejected requests must not persist multipart files");
 });
