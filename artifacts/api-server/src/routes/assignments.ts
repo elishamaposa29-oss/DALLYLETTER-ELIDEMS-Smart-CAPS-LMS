@@ -13,6 +13,7 @@ import { isObjectStorageConfigured } from "../lib/object-storage";
 import { logger } from "../lib/logger";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { registerDirectMediaUploadRoutes } from "../lib/media-direct-upload-routes";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
@@ -33,6 +34,18 @@ async function canManagerAccessTeacherRecord(user: NonNullable<Express.Request["
   const [target] = await db.select({ role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel }).from(usersTable).where(eq(usersTable.id, teacherId));
   return Boolean(target && canModerateUser(user, target));
 }
+registerDirectMediaUploadRoutes(router, "/material", [requireAuth], async request => {
+  const actor = request.currentUser!;
+  if (!canManageAcademicContent(actor) || (canAccessManager(actor) && !isOwnerRole(actor.role))) return null;
+  return { routeKey: "assignments.material", targetType: "teacher-material-library", targetId: String(actor.id), maxBytes: MAX_MEDIA_SIZE_BYTES };
+});
+
+registerDirectMediaUploadRoutes(router, "/submission-material", [requireAuth], async request => {
+  const actor = request.currentUser!;
+  if (actor.role !== "student") return null;
+  return { routeKey: "assignments.submission-material", targetType: "learner-submission-draft", targetId: String(actor.id), maxBytes: MAX_MEDIA_SIZE_BYTES };
+});
+
 function normalizeGrade(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
