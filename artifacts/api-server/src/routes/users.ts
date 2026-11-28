@@ -14,8 +14,9 @@ import {
   PromoteUserParams, PromoteUserBody,
 } from "@workspace/api-zod";
 import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { registerDirectMediaUploadRoutes } from "../lib/media-direct-upload-routes";
 import { createPresignedPrivateMediaRead, headObject, isPrivateObjectDeliveryEnabled } from "../lib/object-storage";
 import { canReadPrivateProfileByRole, serializePublicProfile, maskPayoutDestination } from "../lib/profile-access-policy";
 import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
@@ -561,6 +562,32 @@ router.patch("/users/me/teacher-cv", requireAuth, async (req, res): Promise<void
 });
 
 const teacherDocumentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+registerDirectMediaUploadRoutes(router, "/users/me/teacher-documents", [requireAuth], async request => {
+  const actor = request.currentUser!;
+  const documentType = typeof request.body?.documentType === "string" ? request.body.documentType.trim() : "";
+  const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+  const allowed = ["application/pdf","image/jpeg","image/png","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+  if (normalizeRole(actor.role) !== "teacher" || !["cv","resume","certificate","proof"].includes(documentType) || !allowed.includes(mimeType) || !isAllowedMediaType(mimeType)) return null;
+  return { routeKey: "users.me.teacher-documents", targetType: "teacher-document", targetId: `${actor.id}:${documentType}`, maxBytes: 10 * 1024 * 1024 };
+}, {
+  onCompleted: async (request, uploaded) => {
+    const actor = request.currentUser!;
+    const documentType = typeof request.body?.documentType === "string" ? request.body.documentType.trim() : "";
+    const fileName = typeof request.body?.fileName === "string" ? request.body.fileName.trim().slice(0, 255) : "teacher-document";
+    const mimeType = typeof request.body?.mimeType === "string" ? request.body.mimeType.trim().toLowerCase() : "";
+    try {
+      const result = await pool.query(
+        "INSERT INTO teacher_documents (user_id, document_type, file_name, mime_type, size_bytes, data, storage_key) VALUES ($1,$2,$3,$4,$5,decode('', 'hex'),$6) RETURNING id, document_type, file_name, mime_type, size_bytes, created_at",
+        [actor.id, documentType, fileName, mimeType, uploaded.size, uploaded.storageKey],
+      );
+      return result.rows[0];
+    } catch (error) {
+      await removeStoredMedia(uploaded.storageKey).catch(() => undefined);
+      throw error;
+    }
+  },
+});
 
 router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
   // Reject non-teacher accounts before multer buffers up to 10 MiB in memory.
