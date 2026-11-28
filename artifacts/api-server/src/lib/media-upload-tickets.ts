@@ -173,7 +173,13 @@ export async function completeDirectMediaUpload(input:{
     await pool.query("UPDATE media_upload_tickets SET status='rejected' WHERE token_hash=$1 AND status='issued'",[digestTicket(input.ticket)]).catch(()=>undefined);
     throw new Error("Uploaded object byte count or SHA-256 checksum does not match the authorized ticket");
   }
-  verifyMimeSignatureBytes(actual.prefix,input.mimeType);
+  try{
+    verifyMimeSignatureBytes(actual.prefix,input.mimeType);
+  }catch(error){
+    await removeStoredMedia(storageKey).catch(()=>undefined);
+    await pool.query("UPDATE media_upload_tickets SET status='rejected' WHERE token_hash=$1 AND status='issued'",[digestTicket(input.ticket)]).catch(()=>undefined);
+    throw error;
+  }
   await markMediaUploadVerified({ticket:input.ticket,userId:input.userId,routeKey:input.routeKey,targetType:input.targetType,targetId:input.targetId,mimeType:input.mimeType,size:actual.size,sha256:actual.sha256});
   const consumed=await consumeMediaUploadTicket({ticket:input.ticket,userId:input.userId,routeKey:input.routeKey,targetType:input.targetType,targetId:input.targetId,mimeType:input.mimeType});
   return {storageKey:consumed.storageKey,size:consumed.size,sha256:consumed.sha256};
