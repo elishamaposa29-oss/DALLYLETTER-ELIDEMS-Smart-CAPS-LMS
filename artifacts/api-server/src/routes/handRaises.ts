@@ -5,6 +5,7 @@ import { db, handRaisesTable, activityLogTable, classesTable, messagesTable } fr
 import { RaiseHandBody, ListHandRaisesQueryParams } from "@workspace/api-zod";
 import { requireAuth, isOwnerRole } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
+import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -58,7 +59,7 @@ router.post("/raise-hand/with-media", requireAuth, (req, res): void => {
       const question = typeof req.body?.question === "string" ? req.body.question.slice(0, 5000) : "";
       const key = req.file!.filename;
       try {
-        await persistUploadedMedia(key, req.file!.mimetype, req.file!.path);
+        await persistTicketedMediaUpload({ localPath: req.file!.path, storageKey: key, mimeType: req.file!.mimetype, binding: { userId: user.id, routeKey: "handRaises.raise-hand.with-media", targetType: "class-hand-raise", targetId: String(classId), maxBytes: MAX_MEDIA_SIZE_BYTES } });
         const mediaUrl = "/api/lessons/media/" + key + "?type=" + encodeURIComponent(req.file!.mimetype);
         const [handRaise] = await db.insert(handRaisesTable).values({
           studentId: user.id, studentName: user.name, classId, question: question || null, mediaUrl, mediaOwned: true, isResolved: false,
