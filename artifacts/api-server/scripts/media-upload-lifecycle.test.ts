@@ -845,6 +845,24 @@ test("real HTTP upload route families reject unauthorized actors before multipar
       });
       assert.equal(response.status, item.expected, item.label + " must be rejected before accepting multipart bytes");
     }
+
+    const directCases = [
+      { path: "/api/assignments/material/direct-upload-ticket", role: "student", expected: 403, label: "teacher-only assignment material direct ticket" },
+      { path: "/api/assignments/submission-material/direct-upload-ticket", role: "teacher", expected: 403, label: "student-only submission direct ticket" },
+      { path: "/api/exercises/answer-media/direct-upload-ticket", role: "teacher", expected: 403, label: "student-only exercise answer direct ticket" },
+      { path: "/api/exercises/question-media/direct-upload-ticket", role: "student", expected: 403, label: "teacher-only exercise question direct ticket" },
+      { path: "/api/raise-hand/with-media/direct-upload-ticket", role: "teacher", expected: 403, label: "student-only hand-raise direct ticket" },
+      { path: "/api/messages/media/direct-upload-ticket?groupId=2147483647", role: "student", expected: 403, label: "non-member group direct media ticket" },
+      { path: "/api/users/me/teacher-documents/direct-upload-ticket", role: "student", expected: 403, label: "teacher-only document direct ticket" },
+    ];
+    for (const item of directCases) {
+      const response = await fetch(`http://127.0.0.1:${address.port}${item.path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-test-role": item.role, "x-test-user-id": String(item.role === "teacher" ? userB : userA) },
+        body: JSON.stringify({ mimeType: "application/pdf", size: 100 }),
+      });
+      assert.equal(response.status, item.expected, item.label + " must reject unauthorized users before issuing a ticket");
+    }
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
