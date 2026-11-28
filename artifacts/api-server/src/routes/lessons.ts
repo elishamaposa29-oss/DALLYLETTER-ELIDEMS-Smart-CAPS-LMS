@@ -195,8 +195,19 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
 router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): Promise<void> => {
   const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : "";
   if (!/^[a-f0-9-]{36}$/i.test(storageKey)) { res.status(400).json({ error: "Invalid media key" }); return; }
-  const owner = await pool.query("SELECT user_id FROM media_upload_tickets WHERE storage_key = $1 AND status = 'consumed' ORDER BY created_at DESC LIMIT 1", [storageKey]);
-  if (!owner.rows[0] || (Number(owner.rows[0].user_id) !== Number(req.currentUser!.id) && !isOwnerRole(req.currentUser!.role))) {
+  // Share links are an explicit public-access escape hatch. Never issue one
+  // for private submissions, chat attachments, profile media, teacher records,
+  // group covers, or any other ticketed object type.
+  const owner = await pool.query(
+    "SELECT user_id, route_key, target_type FROM media_upload_tickets WHERE storage_key = $1 AND status = 'consumed' ORDER BY consumed_at DESC LIMIT 1",
+    [storageKey],
+  );
+  const ticket = owner.rows[0] as { user_id: number; route_key: string; target_type: string } | undefined;
+  if (!ticket || ticket.route_key !== "lessons.media" || ticket.target_type !== "lesson-media-library") {
+    res.status(403).json({ error: "This media type cannot be shared publicly." });
+    return;
+  }
+  if (Number(ticket.user_id) !== Number(req.currentUser!.id) && !isOwnerRole(req.currentUser!.role)) {
     res.status(403).json({ error: "Only the media uploader or platform owner can create a share link" });
     return;
   }
