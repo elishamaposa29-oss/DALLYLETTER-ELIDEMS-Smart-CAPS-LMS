@@ -603,3 +603,39 @@ test("direct upload ticket and completion endpoints run through real authenticat
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
 });
+
+
+test("real lesson upload HTTP lifecycle publishes only after verification and serves bounded Range reads", async () => {
+  const bytes = Buffer.from("%PDF-1.7\\nDallyletter real route lifecycle\\n%%EOF\\n");
+  const app = express();
+  app.use((req, _res, next) => {
+    Reflect.set(req, "currentUser", { id: userA, role: "teacher", isManager: false, name: "Media Test Teacher" });
+    next();
+  });
+  app.use("/api", lessonsRouter);
+  const server = app.listen(0);
+  await new Promise<void>(resolve => server.once("listening", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  try {
+    const form = new FormData();
+    form.append("file", new Blob([bytes], { type: "application/pdf" }), "lesson-notes.pdf");
+    const uploadedResponse = await fetch(`http://127.0.0.1:${address.port}/api/lessons/media`, { method: "POST", body: form });
+    assert.equal(uploadedResponse.status, 201);
+    const uploaded = await uploadedResponse.json() as { mediaUrl: string; storageKey: string; size: number };
+    storageKeys.push(uploaded.storageKey);
+    assert.equal(uploaded.size, bytes.length);
+    const ticket = await pool.query("SELECT status,uploaded_size,uploaded_sha256 FROM media_upload_tickets WHERE storage_key=$1", [uploaded.storageKey]);
+    assert.equal(ticket.rows[0]?.status, "consumed");
+    assert.equal(Number(ticket.rows[0]?.uploaded_size), bytes.length);
+    const full = await fetch(`http://127.0.0.1:${address.port}${uploaded.mediaUrl}`);
+    assert.equal(full.status, 200);
+    assert.deepEqual(Buffer.from(await full.arrayBuffer()), bytes);
+    const range = await fetch(`http://127.0.0.1:${address.port}${uploaded.mediaUrl}`, { headers: { Range: "bytes=0-9" } });
+    assert.equal(range.status, 206);
+    assert.equal(range.headers.get("content-range"), `bytes 0-9/${bytes.length}`);
+    assert.equal((await range.arrayBuffer()).byteLength, 10);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+});
