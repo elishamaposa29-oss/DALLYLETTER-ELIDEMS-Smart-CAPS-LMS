@@ -14,7 +14,7 @@ import {
   PromoteUserParams, PromoteUserBody,
 } from "@workspace/api-zod";
 import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
-import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
+import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
 import { registerDirectMediaUploadRoutes } from "../lib/media-direct-upload-routes";
 import { createPresignedPrivateMediaRead, headObject, isPrivateObjectDeliveryEnabled } from "../lib/object-storage";
