@@ -1,7 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
 import { createReadStream } from "node:fs";
 
-type StorageConfig = {
+export interface MediaObjectStorageProvider {\n  readonly name: string;\n  readonly supportsByteRanges: boolean;\n  readonly supportsStreamingUpload: boolean;\n  put(storageKey: string, mimeType: string, localPath: string): Promise<void>;\n  get(storageKey: string, range?: string): Promise<Response | null>;\n  delete(storageKey: string): Promise<void>;\n}\n\nexport const s3CompatibleMediaProvider = {\n  name: "s3-compatible",\n  supportsByteRanges: true,\n  supportsStreamingUpload: true,\n  put: putObject,\n  get: getObject,\n  delete: deleteObject,\n} satisfies MediaObjectStorageProvider;\n\ntype StorageConfig = {
   endpoint: string;
   bucket: string;
   accessKeyId: string;
