@@ -11,6 +11,7 @@ import {
   SendMessageBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth-middleware";
+import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
 import { getAIProvider } from "../lib/ai-provider";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, getMediaPath, getMediaStats, isAllowedMediaType, removeStoredMedia, persistUploadedMedia, streamStoredMedia, MAX_MEDIA_SIZE_BYTES } from "../lib/media-storage";
 
@@ -147,7 +148,7 @@ router.post("/messages/media", requireAuth, (req, res): void => {
         }
       }
 
-      await persistUploadedMedia(req.file.filename, req.file.mimetype, req.file.path);
+      await persistTicketedMediaUpload({ localPath: req.file.path, storageKey: req.file.filename, mimeType: req.file.mimetype, binding: { userId: currentUser.id, routeKey: "messages.media", targetType: groupId != null ? "group-conversation" : "direct-conversation", targetId: String(groupId ?? recipientId), maxBytes: MAX_MEDIA_SIZE_BYTES } });
       res.status(201).json({
         mediaUrl: messageMediaPath(req.file.filename) + "?type=" + encodeURIComponent(req.file.mimetype),
         storageKey: req.file.filename,
