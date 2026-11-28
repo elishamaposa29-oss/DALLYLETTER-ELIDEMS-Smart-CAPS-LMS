@@ -845,3 +845,12 @@ test("real HTTP upload route families reject unauthorized actors before multipar
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
 });
+
+
+test("benchmark suppresses throughput for tiny fixtures instead of reporting misleading MiB/s", async () => {
+  const source = await readFile("../../scripts/media-delivery-benchmark.mjs", "utf8").catch(async () => readFile("../../../scripts/media-delivery-benchmark.mjs", "utf8"));
+  assert.match(source, /minimumThroughputBytes/);
+  assert.match(source, /encodedBodyBytes >= minimumThroughputBytes/);
+  assert.match(source, /decodedBodyBytes >= minimumThroughputBytes/);
+  assert.match(source, /throughputEligible/);
+});
