@@ -5,11 +5,10 @@ import { canViewProfileSection } from "../routes/profileConnections";
 type MediaPrincipal = NonNullable<Express.Request["currentUser"]>;
 
 /**
- * Returns null for pre-ticket legacy objects (which retain their existing
- * authenticated compatibility path), otherwise enforces the ticket's
- * resource-specific delivery policy. Upload authorization is not a substitute
- * for download authorization: every ticketed object is checked against its
- * current resource reference before bytes are streamed.
+ * Enforces resource-specific delivery policy for ticketed objects and
+ * reference-based authorization for legacy objects. Upload authorization is
+ * not a substitute for download authorization: media access is checked against
+ * the current resource reference before bytes are streamed.
  */
 export async function authorizeTicketedMediaDelivery(storageKey: string, actor: MediaPrincipal): Promise<boolean> {
   if (!/^[a-f0-9-]{36}$/i.test(storageKey)) return false;
