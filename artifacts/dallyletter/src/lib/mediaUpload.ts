@@ -3,8 +3,8 @@ import { getApiUrl } from "@workspace/api-client-react";
 type UploadResult = { mediaUrl: string; storageKey?: string; mimeType?: string; size?: number; sha256?: string };
 type DirectTicket = { ticket: string; uploadUrl: string; method: "PUT"; headers: Record<string, string> };
 
-function mediaPath(groupId?: number): string {
-  return "/api/lessons/media" + (groupId ? "?groupId=" + encodeURIComponent(String(groupId)) : "");
+function mediaPath(groupId?: number, suffix = ""): string {
+  return "/api/lessons/media" + suffix + (groupId ? "?groupId=" + encodeURIComponent(String(groupId)) : "");
 }
 
 function xhrUpload(url: string, file: File, headers: Record<string, string>, onProgress?: (percent: number) => void): Promise<void> {
@@ -63,14 +63,14 @@ export async function uploadLessonMedia(
   let ticket: DirectTicket | null = null;
 
   try {
-    const response = await fetch(getApiUrl(endpoint + "/direct-upload-ticket"), {
+    const response = await fetch(getApiUrl(mediaPath(options.groupId, "/direct-upload-ticket")), {
       method: "POST",
       headers: { ...auth, "Content-Type": "application/json" },
       body: JSON.stringify({ mimeType: file.type, size: file.size }),
     });
     if (response.status === 401 || response.status === 403 || response.status === 400) {
       const payload = await response.json().catch(() => null) as { error?: string } | null;
-      throw new Error(payload?.error || "You are not authorized to upload this media.");
+      throw new Error("AUTHORIZATION: " + (payload?.error || "You are not authorized to upload this media."));
     }
     if (!response.ok) return await multipartFallback(file, token, options.groupId, options.onProgress);
     ticket = await response.json() as DirectTicket;
@@ -78,20 +78,20 @@ export async function uploadLessonMedia(
       return await multipartFallback(file, token, options.groupId, options.onProgress);
     }
   } catch (error) {
-    if (error instanceof Error && /not authorized|unauthorized|forbidden/i.test(error.message)) throw error;
+    if (error instanceof Error && /^AUTHORIZATION:/i.test(error.message)) throw error;
     return await multipartFallback(file, token, options.groupId, options.onProgress);
   }
 
   try {
     await xhrUpload(ticket.uploadUrl, file, ticket.headers || {}, options.onProgress);
-    const completed = await fetch(getApiUrl(endpoint + "/direct-upload-complete"), {
+    const completed = await fetch(getApiUrl(mediaPath(options.groupId, "/direct-upload-complete")), {
       method: "POST",
       headers: { ...auth, "Content-Type": "application/json" },
       body: JSON.stringify({ ticket: ticket.ticket, mimeType: file.type }),
     });
     if (completed.status === 401 || completed.status === 403) {
       const payload = await completed.json().catch(() => null) as { error?: string } | null;
-      throw new Error(payload?.error || "You are not authorized to complete this upload.");
+      throw new Error("AUTHORIZATION: " + (payload?.error || "You are not authorized to complete this upload."));
     }
     if (!completed.ok) return await multipartFallback(file, token, options.groupId, options.onProgress);
     const result = await completed.json() as UploadResult;
