@@ -31,6 +31,7 @@ import {
 import { hasContentPermission } from "../lib/content-permissions";
 import { isObjectStorageConfigured } from "../lib/object-storage";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { authorizeTicketedMediaDelivery } from "../lib/media-delivery-access";
 import { logger } from "../lib/logger";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
 
@@ -55,7 +56,21 @@ function validMediaShare(storageKey: string, token: unknown): boolean {
 }
 const mediaAccess = (req: Request, res: Response, next: NextFunction) => {
   if (validMediaShare(String(req.params.storageKey || ""), req.query.shareToken)) { next(); return; }
-  requireAuth(req, res, next);
+  requireAuth(req, res, () => {
+    const actor = req.currentUser;
+    if (!actor) return;
+    const storageKey = typeof req.params.storageKey === "string" ? req.params.storageKey : "";
+    void authorizeTicketedMediaDelivery(storageKey, actor).then(allowed => {
+      // null means a legacy object predating upload tickets; preserve its
+      // authenticated compatibility behavior while all new objects use
+      // resource-specific authorization.
+      if (allowed === false) {
+        res.status(403).json({ error: "You are not authorized to access this media." });
+        return;
+      }
+      next();
+    }).catch(next);
+  });
 };
 
 
