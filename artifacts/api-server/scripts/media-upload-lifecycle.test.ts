@@ -800,3 +800,48 @@ test("consumed-object retention boundary preserves recent media and retries orph
     });
   }
 });
+
+
+test("real HTTP upload route families reject unauthorized actors before multipart file handling", async () => {
+  const app = express();
+  app.use((req, _res, next) => {
+    const role = String(req.header("x-test-role") || "student");
+    const id = Number(req.header("x-test-user-id") || userA);
+    Reflect.set(req, "currentUser", {
+      id, role, name: "Media Route Test", isManager: false, managerLevel: null,
+    });
+    next();
+  });
+  app.use("/api/assignments", assignmentsRouter);
+  app.use("/api/exercises", exercisesRouter);
+  app.use("/api/hand-raises", handRaisesRouter);
+  app.use("/api/messages", messagesRouter);
+  app.use("/api/users", usersRouter);
+  const server = app.listen(0);
+  await new Promise<void>(resolve => server.once("listening", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const cases = [
+    { path: "/api/assignments/material", role: "student", expected: 403, label: "teacher-only assignment material" },
+    { path: "/api/assignments/submission-material", role: "teacher", expected: 403, label: "student-only submission material" },
+    { path: "/api/exercises/answer-media", role: "teacher", expected: 403, label: "student-only exercise answers" },
+    { path: "/api/exercises/question-media", role: "student", expected: 403, label: "teacher-only exercise questions" },
+    { path: "/api/hand-raises/raise-hand/with-media", role: "teacher", expected: 403, label: "student-only hand raises" },
+    { path: "/api/messages/messages/media?groupId=2147483647", role: "student", expected: 403, label: "non-member group conversation media" },
+    { path: "/api/users/users/me/teacher-documents", role: "student", expected: 403, label: "teacher-only qualification documents" },
+  ];
+  try {
+    for (const item of cases) {
+      const form = new FormData();
+      form.append("file", new Blob(["unauthorized upload probe"], { type: "application/pdf" }), "probe.pdf");
+      const response = await fetch(`http://127.0.0.1:${address.port}${item.path}`, {
+        method: "POST",
+        headers: { "x-test-role": item.role, "x-test-user-id": String(userA) },
+        body: form,
+      });
+      assert.equal(response.status, item.expected, item.label + " must be rejected before accepting multipart bytes");
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+});
