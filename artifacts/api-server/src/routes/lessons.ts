@@ -29,8 +29,8 @@ import {
   removeStoredMedia,
 } from "../lib/media-storage";
 import { hasContentPermission } from "../lib/content-permissions";
-import { createPresignedPrivateMediaRead, headObject, isPrivateObjectDeliveryEnabled } from "../lib/object-storage";
-import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { createPresignedMediaUpload, createPresignedPrivateMediaRead, headObject, isObjectStorageConfigured, isPrivateObjectDeliveryEnabled } from "../lib/object-storage";
+import { completeDirectMediaUpload, issueMediaUploadTicket, persistTicketedMediaUpload } from "../lib/media-upload-tickets";
 import { authorizeTicketedMediaDelivery } from "../lib/media-delivery-access";
 import { logger } from "../lib/logger";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
@@ -187,6 +187,51 @@ router.post("/lessons/media", requireAuth, requireManagerPermissionIfManager("le
       });
     });
   });
+});
+
+// Direct-to-object-storage upload flow for lesson media and study-group covers.
+// Existing multipart clients remain supported while web/mobile callers migrate.
+router.post("/lessons/media/direct-upload-ticket", requireAuth, requireManagerPermissionIfManager("lessons.create"), authorizeLessonMediaUpload, async (req,res):Promise<void> => {
+  if(!isObjectStorageConfigured()){res.status(503).json({error:"Direct media uploads require configured private object storage."});return;}
+  const mimeType=typeof req.body?.mimeType==="string"?req.body.mimeType.trim().toLowerCase():"";
+  const size=Number(req.body?.size);
+  const expectedSha256=typeof req.body?.sha256==="string"?req.body.sha256.trim().toLowerCase():undefined;
+  if(!isAllowedMediaType(mimeType)||!Number.isSafeInteger(size)||size<=0||size>MAX_MEDIA_SIZE_BYTES||
+    (expectedSha256!==undefined&&!/^[a-f0-9]{64}$/.test(expectedSha256))){
+    res.status(400).json({error:"A supported MIME type, exact file size and optional SHA-256 checksum are required."});return;
+  }
+  const groupId=Number(req.query.groupId);
+  const isGroupCover=Number.isInteger(groupId)&&groupId>0;
+  try{
+    const binding={userId:req.currentUser!.id,routeKey:"lessons.media",targetType:isGroupCover?"study-group-cover":"lesson-media-library",
+      targetId:String(isGroupCover?groupId:req.currentUser!.id),mimeType,maxBytes:size,expectedSha256};
+    const issued=await issueMediaUploadTicket(binding);
+    const signed=createPresignedMediaUpload(issued.storageKey,mimeType,300);
+    res.status(201).json({ticket:issued.ticket,storageKey:issued.storageKey,uploadUrl:signed.url,method:signed.method,
+      headers:signed.headers,expiresAt:issued.expiresAt,expectedSize:size});
+  }catch(error){
+    logger.error({error:error instanceof Error?{name:error.name,message:error.message.slice(0,300)}:"Unknown"}, "Direct media upload ticket issue failed");
+    res.status(503).json({error:"A direct upload ticket could not be issued. Please retry."});
+  }
+});
+
+router.post("/lessons/media/direct-upload-complete", requireAuth, requireManagerPermissionIfManager("lessons.create"), authorizeLessonMediaUpload, async (req,res):Promise<void> => {
+  const ticket=typeof req.body?.ticket==="string"?req.body.ticket:"";
+  const mimeType=typeof req.body?.mimeType==="string"?req.body.mimeType.trim().toLowerCase():"";
+  if(!ticket||ticket.length>256||!isAllowedMediaType(mimeType)){res.status(400).json({error:"A valid upload ticket and MIME type are required."});return;}
+  const groupId=Number(req.query.groupId);
+  const isGroupCover=Number.isInteger(groupId)&&groupId>0;
+  try{
+    const completed=await completeDirectMediaUpload({ticket,userId:req.currentUser!.id,routeKey:"lessons.media",
+      targetType:isGroupCover?"study-group-cover":"lesson-media-library",
+      targetId:String(isGroupCover?groupId:req.currentUser!.id),mimeType});
+    res.status(201).json({mediaUrl:`/api/lessons/media/${completed.storageKey}?type=${encodeURIComponent(mimeType)}`,
+      storageKey:completed.storageKey,mimeType,size:completed.size,sha256:completed.sha256});
+  }catch(error){
+    logger.warn({userId:req.currentUser!.id,routeKey:"lessons.media",error:error instanceof Error?error.message.slice(0,300):"Unknown"},
+      "Direct media upload completion rejected");
+    res.status(400).json({error:"The uploaded object failed ticket, size, MIME or checksum verification. Restart the upload."});
+  }
 });
 
 router.post("/lessons/media/:storageKey/share", requireAuth, async (req, res): Promise<void> => {
