@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { stat, open } from "node:fs/promises";
 import { pool } from "@workspace/db";
 import { persistUploadedMedia, removeStoredMedia, streamStoredMedia } from "./media-storage";
 
@@ -166,6 +166,31 @@ export async function cleanupExpiredMediaUploads(limit = 200): Promise<{ scanned
 }
 
 
+async function verifyMimeSignature(path: string, mimeType: string): Promise<void> {
+  const handle = await open(path, "r");
+  try {
+    const header = Buffer.alloc(16);
+    const { bytesRead } = await handle.read(header, 0, header.length, 0);
+    const b = header.subarray(0, bytesRead);
+    const starts = (...values: number[]) => values.every((value, index) => b[index] === value);
+    const valid =
+      (mimeType === "image/jpeg" && starts(0xff, 0xd8, 0xff)) ||
+      (mimeType === "image/png" && starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) ||
+      (mimeType === "image/webp" && b.subarray(0, 4).toString() === "RIFF" && b.subarray(8, 12).toString() === "WEBP") ||
+      (mimeType === "application/pdf" && b.subarray(0, 5).toString() === "%PDF-") ||
+      ((mimeType === "video/mp4" || mimeType === "video/quicktime" || mimeType === "audio/mp4") && b.subarray(4, 8).toString() === "ftyp") ||
+      ((mimeType === "video/webm" || mimeType === "audio/webm") && starts(0x1a, 0x45, 0xdf, 0xa3)) ||
+      ((mimeType === "audio/ogg" || mimeType === "video/ogg") && b.subarray(0, 4).toString() === "OggS") ||
+      (mimeType === "audio/wav" && b.subarray(0, 4).toString() === "RIFF" && b.subarray(8, 12).toString() === "WAVE") ||
+      (mimeType === "audio/mpeg" && (b.subarray(0, 3).toString() === "ID3" || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0))) ||
+      (mimeType === "application/msword" && starts(0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1)) ||
+      (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" && starts(0x50, 0x4b, 0x03, 0x04));
+    if (!valid) throw new Error("Uploaded file signature does not match its declared MIME type");
+  } finally {
+    await handle.close();
+  }
+}
+
 async function sha256File(path: string): Promise<string> {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(path)) hash.update(chunk);
@@ -205,7 +230,7 @@ export async function persistTicketedMediaUpload(input: {
   if (!file.isFile() || file.size <= 0 || file.size > input.binding.maxBytes) {
     throw new Error("Uploaded media size is outside the authorized limit");
   }
-  const sha256 = await sha256File(input.localPath);
+  await verifyMimeSignature(input.localPath, input.mimeType);\n  const sha256 = await sha256File(input.localPath);
   const issued = await issueMediaUploadTicket({
     ...input.binding,
     storageKey: input.storageKey,
@@ -241,7 +266,7 @@ export async function persistTicketedMediaUpload(input: {
     });
     return { storageKey: verified.storageKey, size: actual.size, sha256: actual.sha256, backend };
   } catch (error) {
-    if (stored) await removeStoredMedia(input.storageKey).catch(() => undefined);
+    await removeStoredMedia(input.storageKey).catch(() => undefined);
     await pool.query(
       "UPDATE media_upload_tickets SET status = 'rejected' WHERE id = $1 AND status <> 'consumed'",
       [issued.ticketId],
