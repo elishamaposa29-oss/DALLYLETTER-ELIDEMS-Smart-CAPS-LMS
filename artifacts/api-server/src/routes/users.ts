@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, unlink } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { eq, notInArray } from "drizzle-orm";
 import multer from "multer";
 import { db, usersTable, classesTable, notificationsTable, pool } from "@workspace/db";
@@ -566,11 +568,27 @@ router.post("/users/me/teacher-documents", requireAuth, (req, res): void => {
       if (!["cv", "resume", "certificate", "proof"].includes(documentType)) { res.status(400).json({ error: "Choose CV, resume, certificate or proof" }); return; }
       const allowed = ["application/pdf","image/jpeg","image/png","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
       if (!allowed.includes(req.file.mimetype)) { res.status(415).json({ error: "Unsupported document type" }); return; }
-      const result = await pool.query(
-        "INSERT INTO teacher_documents (user_id, document_type, file_name, mime_type, size_bytes, data) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, document_type, file_name, mime_type, size_bytes, created_at",
-        [req.currentUser!.id, documentType, req.file.originalname, req.file.mimetype, req.file.size, req.file.buffer],
-      );
-      res.status(201).json(result.rows[0]);
+      const actor = req.currentUser!;
+      const localPath = path.join(os.tmpdir(), `dallyletter-teacher-document-${crypto.randomUUID()}`);
+      const storageKey = createMediaStorageKey();
+      try {
+        await writeFile(localPath, req.file.buffer);
+        await persistTicketedMediaUpload({
+          localPath, storageKey, mimeType: req.file.mimetype,
+          binding: {
+            userId: actor.id, routeKey: "users.me.teacher-documents",
+            targetType: "teacher-document", targetId: `${actor.id}:${documentType}`,
+            maxBytes: 10 * 1024 * 1024,
+          },
+        });
+        const result = await pool.query(
+          "INSERT INTO teacher_documents (user_id, document_type, file_name, mime_type, size_bytes, data, storage_key) VALUES ($1,$2,$3,$4,$5,decode('', 'hex'),$6) RETURNING id, document_type, file_name, mime_type, size_bytes, created_at",
+          [actor.id, documentType, req.file.originalname, req.file.mimetype, req.file.size, storageKey],
+        );
+        res.status(201).json(result.rows[0]);
+      } finally {
+        await unlink(localPath).catch(() => undefined);
+      }
     })().catch(() => res.status(500).json({ error: "Qualification document upload failed" }));
   });
 });
