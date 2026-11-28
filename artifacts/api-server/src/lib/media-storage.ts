@@ -5,6 +5,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { deleteObject, getObject, isObjectStorageConfigured, putObject } from "./object-storage";
 import { emitMediaMetric, mediaDurationSince } from "./media-telemetry";
+import { parseMediaByteRange } from "./media-range";
 
 // Free-plan durable fallback: store small uploads in PostgreSQL in bounded chunks.
 // Larger video uploads require configured S3-compatible object storage.
@@ -32,28 +33,6 @@ const allowedMimeTypes = new Set([
 ]);
 
 export const MAX_MEDIA_SIZE_BYTES = 250 * 1024 * 1024;
-
-export interface ParsedMediaRange { start: number; end: number; }
-
-export function parseMediaByteRange(range: string, size: number): ParsedMediaRange | null {
-  if (!Number.isSafeInteger(size) || size <= 0) return null;
-  const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-  if (!match || (!match[1] && !match[2])) return null;
-  let start: number;
-  let end: number;
-  if (!match[1]) {
-    const suffixLength = Number(match[2]);
-    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return null;
-    start = Math.max(size - suffixLength, 0);
-    end = size - 1;
-  } else {
-    start = Number(match[1]);
-    end = match[2] ? Number(match[2]) : size - 1;
-  }
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end || start >= size) return null;
-  return { start, end: Math.min(end, size - 1) };
-}
-
 
 export function isAllowedMediaType(mimeType: string): boolean {
   return allowedMimeTypes.has(mimeType.split(";", 1)[0].trim().toLowerCase());
