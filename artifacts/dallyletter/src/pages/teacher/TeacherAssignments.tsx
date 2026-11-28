@@ -2,6 +2,7 @@ import { ACADEMIC_GRADE_OPTIONS } from "@workspace/api-client-react/academic-gra
 import { DashboardLayout } from "@/components/DashboardLayout";
 import UserProfileLink from "@/components/UserProfileLink";
 import { getApiUrl } from "@workspace/api-client-react";
+import { uploadRouteMedia } from "@/lib/mediaUpload";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -65,13 +66,7 @@ export default function TeacherAssignments() {
   const uploadMaterial = (file: File | undefined) => {
     if (!file) return;
     setMaterialUploading(true);
-    const body = new FormData();
-    body.append("file", file);
-    void fetch(getApiUrl("/api/assignments/material"), { method: "POST", headers: { Authorization: `Bearer ${token()}` }, body })
-      .then(async response => {
-        if (!response.ok) { const error = await response.json().catch(() => null) as { error?: string } | null; throw new Error(error?.error ?? "Material upload failed"); }
-        return response.json() as Promise<{ attachmentUrl: string }>;
-      })
+    void uploadRouteMedia<{ attachmentUrl: string }>(file, token(), "/api/assignments/material")
       .then(result => setForm(formState => ({ ...formState, attachmentUrl: result.attachmentUrl })))
       .catch(error => toast({ variant: "destructive", title: error instanceof Error ? error.message : "Material upload failed" }))
       .finally(() => setMaterialUploading(false));
