@@ -1,6 +1,8 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import crypto from "node:crypto";
 import { readFile, writeFile, unlink } from "node:fs/promises";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import os from "node:os";
 import path from "node:path";
 import { eq, notInArray } from "drizzle-orm";
@@ -14,6 +16,7 @@ import {
 import { requireAuth, requireOwner, canAccessManager, isOwnerRole } from "../lib/auth-middleware";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, removeStoredMedia, streamStoredMedia } from "../lib/media-storage";
 import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
+import { createPresignedPrivateMediaRead, headObject, isObjectStorageConfigured } from "../lib/object-storage";
 import { canReadPrivateProfileByRole, serializePublicProfile, maskPayoutDestination } from "../lib/profile-access-policy";
 import { revokeUserSessions, consumeAuthAttempt } from "../lib/auth-session-store";
 import { hashPassword, verifyPassword } from "../lib/password-hash";
@@ -1215,14 +1218,34 @@ router.get("/qualifications/:id/document", requireAuth, requireManagerPermission
   if(!target || (Number(doc.user_id)!==actor.id && !isOwnerRole(actor.role) && !canModerateUser(actor,{role:target.role,isManager:target.is_manager,managerLevel:target.manager_level}))){res.status(404).json({error:"Document not found."});return;}
   if(doc.user_id!==actor.id&&!(canAccessManager(actor)&&await managerHasPermission(actor,"qualifications.view"))){res.status(403).json({error:"Document access denied."});return;}
   if(!doc.storage_key){res.status(503).json({error:"Document storage key unavailable for this legacy record."});return;}
-  const media=await streamStoredMedia(doc.storage_key);
-  if(!media){res.status(404).json({error:"Stored document not found."});return;}
+  const safeFileName=String(doc.file_name).replace(/["\\r\\n]/g,"").slice(0,255);
   res.setHeader("Content-Type",doc.mime_type);
-  res.setHeader("Content-Disposition",`inline; filename="${String(doc.file_name).replace(/["\\r\\n]/g,"")}"`);
-  res.setHeader("Cache-Control","private, no-store");
+  res.setHeader("Content-Disposition",`inline; filename="${safeFileName}"`);
+  res.setHeader("Cache-Control","private, no-store, max-age=0");
+  res.setHeader("X-Content-Type-Options","nosniff");
+  res.setHeader("Referrer-Policy","no-referrer");
+  // The document and its owner/scope have been authorized above. Redirect only
+  // when the exact object exists in private object storage; old PostgreSQL-backed
+  // documents continue through the bounded, streaming API fallback.
+  if(isObjectStorageConfigured()){
+    const metadata=await headObject(String(doc.storage_key));
+    if(metadata){
+      const signed=createPresignedPrivateMediaRead(String(doc.storage_key),120);
+      res.status(307).setHeader("Location",signed.url).end();
+      return;
+    }
+  }
+  const media=await streamStoredMedia(String(doc.storage_key),req.headers.range);
+  if(!media){res.status(404).json({error:"Stored document not found."});return;}
   res.status(media.status);
-  const bytes=Buffer.from(await media.arrayBuffer());
-  res.send(bytes);
+  media.headers.forEach((value,key)=>res.setHeader(key,value));
+  res.setHeader("Content-Type",doc.mime_type);
+  res.setHeader("Content-Disposition",`inline; filename="${safeFileName}"`);
+  if(media.body){
+    await pipeline(Readable.fromWeb(media.body as import("node:stream/web").ReadableStream<Uint8Array>),res);
+  }else{
+    res.end();
+  }
 });
 
 router.post("/users/me/notification-email/request", requireAuth, async(req,res):Promise<void>=>{
