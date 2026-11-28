@@ -1,5 +1,5 @@
 // Messages routes — group and private chat, including voice notes
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { eq, and, isNull, or, inArray, desc } from "drizzle-orm";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
@@ -23,7 +23,7 @@ import { canModerateUser } from "../lib/role-access";
 
 const router: IRouter = Router();
 
-function isProfileOnlyTeacher(user: NonNullable<Express.Request["currentUser"]>): boolean {
+function isProfileOnlyTeacher(user: NonNullable<Request["currentUser"]>): boolean {
   return normalizeRole(user.role) === "teacher" &&
     ["draft","pending_review","rejected_pending_conversion"].includes(String(user.teacherApplicationStatus ?? "").trim().toLowerCase());
 }
@@ -61,7 +61,7 @@ async function canAccessGroup(groupId: number, userId: number, role: string): Pr
   return Boolean(membership);
 }
 
-async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
+async function canMessageUser(sender: NonNullable<Request["currentUser"]>, recipientId: number): Promise<boolean> {
   if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === sender.id) return false;
   const [recipient] = await db.select({ id: usersTable.id, role: usersTable.role, isManager: usersTable.isManager, managerLevel: usersTable.managerLevel, isPrefect: usersTable.isPrefect, isBlocked: usersTable.isBlocked, isSuspended: usersTable.isSuspended })
     .from(usersTable)
@@ -83,7 +83,7 @@ async function canMessageUser(sender: NonNullable<Express.Request["currentUser"]
   return true;
 }
 
-async function canViewPrivateConversation(user: NonNullable<Express.Request["currentUser"]>, recipientId: number): Promise<boolean> {
+async function canViewPrivateConversation(user: NonNullable<Request["currentUser"]>, recipientId: number): Promise<boolean> {
   if (!Number.isInteger(recipientId) || recipientId <= 0 || recipientId === user.id) return false;
   if (isOwnerRole(user.role)) return true;
   const viewerRole = normalizeRole(user.role);
@@ -113,7 +113,7 @@ async function canViewPrivateConversation(user: NonNullable<Express.Request["cur
  * The target is carried in the query string so authorization cannot be delayed
  * until multipart fields happen to arrive after the file part.
  */
-async function authorizeMessageMediaUpload(req: Express.Request, res: Express.Response, next: Express.NextFunction): Promise<void> {
+async function authorizeMessageMediaUpload(req: Request, res: Response, next: NextFunction): Promise<void> {
   const currentUser = req.currentUser;
   if (!currentUser) { res.status(401).json({ error: "Authentication required" }); return; }
   const groupRaw = req.query.groupId;
@@ -153,7 +153,7 @@ router.post("/messages/media", requireAuth, (req, res, next): void => {
   }).catch(next);
 });
 
-function uploadMessageMedia(req: Express.Request, res: import("express").Response, next: Express.NextFunction): void {
+function uploadMessageMedia(req: Request, res: import("express").Response, next: NextFunction): void {
   voiceUpload.single("file")(req, res, (error) => {
     void (async () => {
       if (error || !req.file) {
@@ -161,8 +161,10 @@ function uploadMessageMedia(req: Express.Request, res: import("express").Respons
         return;
       }
 
-      const groupId = req.body?.groupId == null || req.body.groupId === "" ? null : Number(req.body.groupId);
-      const recipientId = req.body?.recipientId == null || req.body.recipientId === "" ? null : Number(req.body.recipientId);
+      const groupValue = req.body?.groupId ?? req.query.groupId;
+      const recipientValue = req.body?.recipientId ?? req.query.recipientId;
+      const groupId = groupValue == null || groupValue === "" ? null : Number(groupValue);
+      const recipientId = recipientValue == null || recipientValue === "" ? null : Number(recipientValue);
       const currentUser = req.currentUser!;
       if (isProfileOnlyTeacher(currentUser) && groupId != null) {
         await removeStoredMedia(req.file.filename);
