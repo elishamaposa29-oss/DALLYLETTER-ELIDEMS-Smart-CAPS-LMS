@@ -6,13 +6,13 @@ import { spawnSync } from "node:child_process";
 
 const dir = await mkdtemp(join(tmpdir(), "dallyletter-media-telemetry-"));
 try {
-  const outfile = join(dir, "media-telemetry.test.mjs");
+  const outfile = join(dir, "media-telemetry.test.cjs");
   await build({
     entryPoints: ["scripts/media-telemetry.test.ts"],
     outfile,
     bundle: true,
     platform: "node",
-    format: "esm",
+    format: "cjs",
     sourcemap: "inline",
   });
   const result = spawnSync(process.execPath, ["--test", outfile], { stdio: "inherit" });
