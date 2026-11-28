@@ -125,6 +125,8 @@ function requestSample(mode, run) {
           elapsedMs: Number(elapsedMs.toFixed(2)),
           encodedBodyBytes,
           decodedBodyBytes,
+          compressionRatio: decodedBodyBytes > 0 ? Number((encodedBodyBytes / decodedBodyBytes).toFixed(4)) : null,
+          compressionSavingsPercent: decodedBodyBytes > 0 ? Number((100 * (1 - encodedBodyBytes / decodedBodyBytes)).toFixed(2)) : null,
           contentLengthHeader: contentLength ?? null,
           contentEncoding: encoding,
           cacheStatus,
@@ -152,6 +154,11 @@ function median(values) {
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
+function percentile(values, percentileRank) {
+  const sorted = [...values].sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(percentileRank * sorted.length) - 1))];
+}
 
 async function runMode(mode) {
   const results = [];
@@ -161,9 +168,16 @@ async function runMode(mode) {
   const summarize = rows => ({
     samples: rows.length,
     medianLatencyMs: Number(median(rows.map(row => row.elapsedMs)).toFixed(2)),
+    p95LatencyMs: Number(percentile(rows.map(row => row.elapsedMs), 0.95).toFixed(2)),
     medianTimeToFirstByteMs: Number(median(rows.map(row => row.timeToFirstByteMs)).toFixed(2)),
+    p95TimeToFirstByteMs: Number(percentile(rows.map(row => row.timeToFirstByteMs), 0.95).toFixed(2)),
     totalEncodedBodyBytes: rows.reduce((sum, row) => sum + row.encodedBodyBytes, 0),
     totalDecodedBodyBytes: rows.reduce((sum, row) => sum + row.decodedBodyBytes, 0),
+    compressionRatio: rows.reduce((sum, row) => sum + row.encodedBodyBytes, 0) /
+      Math.max(1, rows.reduce((sum, row) => sum + row.decodedBodyBytes, 0)),
+    compressionSavingsPercent: Number((100 * (1 - rows.reduce((sum, row) => sum + row.encodedBodyBytes, 0) /
+      Math.max(1, rows.reduce((sum, row) => sum + row.decodedBodyBytes, 0)))).toFixed(2)),
+    measuredClientVisibleEgressMiB: Number((rows.reduce((sum, row) => sum + row.encodedBodyBytes, 0) / 1048576).toFixed(4)),
     cacheStatuses: [...new Set(rows.map(row => row.cacheStatus))],
     contentEncodings: [...new Set(rows.map(row => row.contentEncoding))],
   });
@@ -191,7 +205,10 @@ try {
     modes: [full, ...(range ? [range] : [])],
     totalEncodedResponseBodyBytes: all.reduce((sum, row) => sum + row.encodedBodyBytes, 0),
     totalDecodedResponseBodyBytes: all.reduce((sum, row) => sum + row.decodedBodyBytes, 0),
-    note: "Encoded bytes are actual compressed HTTP response-body bytes received by this client; decoded bytes are counted after decompression. Neither includes TLS/HTTP overhead. Confirm billed Render/CDN egress in provider metrics; this script does not claim production cost savings.",
+    measuredClientVisibleEgressMiB: Number((all.reduce((sum, row) => sum + row.encodedBodyBytes, 0) / 1048576).toFixed(4)),
+    aggregateCompressionRatio: all.reduce((sum, row) => sum + row.encodedBodyBytes, 0) /
+      Math.max(1, all.reduce((sum, row) => sum + row.decodedBodyBytes, 0)),
+    note: "Encoded bytes are actual compressed HTTP response-body bytes received by this client; decoded bytes are counted after decompression. The egress MiB figure is client-visible body transfer, not provider-billed egress. Neither includes TLS/HTTP overhead. Confirm billed Render/CDN egress in provider metrics; this script does not claim production cost savings.",
   };
   console.log(JSON.stringify(summary, null, 2));
   if (all.some(row => row.status < 200 || row.status >= 300)) process.exitCode = 1;
