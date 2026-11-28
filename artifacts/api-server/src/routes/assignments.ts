@@ -12,6 +12,7 @@ import { getAIProvider } from "../lib/ai-provider";
 import { isObjectStorageConfigured } from "../lib/object-storage";
 import { logger } from "../lib/logger";
 import { queueAIContentSafety } from "../lib/ai-content-safety";
+import { persistTicketedMediaUpload } from "../lib/media-upload-tickets";
 import { createMediaStorageKey, ensureMediaDirectory, getMediaDirectory, isAllowedMediaType, MAX_MEDIA_SIZE_BYTES, persistUploadedMedia, removeStoredMedia } from "../lib/media-storage";
 
 const router = Router();
@@ -62,7 +63,7 @@ router.post("/material", requireAuth, (req, res): void => {
     if (error) { res.status(400).json({ error: "A supported material file up to 250 MB is required" }); return; }
     const file = req.file;
     if (!file) { res.status(400).json({ error: "A supported material file is required" }); return; }
-    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
+    persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: req.currentUser!.id, routeKey: "assignments.material", targetType: "teacher-material-library", targetId: String(req.currentUser!.id), maxBytes: MAX_MEDIA_SIZE_BYTES } }).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
       logger.error({
         error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
         persistentStorageConfigured: isObjectStorageConfigured(),
@@ -83,7 +84,7 @@ router.post("/submission-material", requireAuth, (req, res): void => {
     if (error) { res.status(400).json({ error: "A supported submission file up to 250 MB is required" }); return; }
     const file = req.file;
     if (!file) { res.status(400).json({ error: "A supported submission file is required" }); return; }
-    persistUploadedMedia(file.filename, file.mimetype, file.path).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
+    persistTicketedMediaUpload({ localPath: file.path, storageKey: file.filename, mimeType: file.mimetype, binding: { userId: req.currentUser!.id, routeKey: "assignments.submission-material", targetType: "learner-submission-draft", targetId: String(req.currentUser!.id), maxBytes: MAX_MEDIA_SIZE_BYTES } }).then(() => res.status(201).json({ attachmentUrl: `/api/lessons/media/${file.filename}?type=${encodeURIComponent(file.mimetype)}`, fileName: file.originalname, mimeType: file.mimetype, size: file.size })).catch((error) => {
       logger.error({
         error: error instanceof Error ? { name: error.name, message: error.message.slice(0, 500) } : "Unknown media upload failure",
         persistentStorageConfigured: isObjectStorageConfigured(),
