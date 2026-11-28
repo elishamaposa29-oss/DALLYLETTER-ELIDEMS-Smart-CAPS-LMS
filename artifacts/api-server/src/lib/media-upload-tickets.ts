@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { pool } from "@workspace/db";
+import { removeStoredMedia } from "./media-storage";
 
 export type MediaUploadBinding = {
   userId: number;
@@ -128,4 +129,36 @@ export async function listExpiredUnconsumedMediaTickets(limit = 200): Promise<Ar
   return result.rows.map((row: { id: string; storage_key: string }) => ({
     ticketId: String(row.id), storageKey: String(row.storage_key),
   }));
+}
+
+
+/**
+ * Reap expired ticket objects. Failed deletions remain in the expired state
+ * and are retried by the next scheduled invocation.
+ */
+export async function cleanupExpiredMediaUploads(limit = 200): Promise<{ scanned: number; deleted: number; failed: number }> {
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 1000);
+  await pool.query(
+    `UPDATE media_upload_tickets
+        SET status = 'expired'
+      WHERE status IN ('issued', 'uploaded') AND expires_at <= now()`,
+  );
+  const candidates = await pool.query(
+    `SELECT id, storage_key FROM media_upload_tickets
+      WHERE status = 'expired'
+      ORDER BY expires_at ASC LIMIT $1`,
+    [safeLimit],
+  );
+  let deleted = 0;
+  let failed = 0;
+  for (const row of candidates.rows as Array<{ id: string; storage_key: string }>) {
+    try {
+      await removeStoredMedia(String(row.storage_key));
+      await pool.query("DELETE FROM media_upload_tickets WHERE id = $1 AND status = 'expired'", [row.id]);
+      deleted += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { scanned: candidates.rows.length, deleted, failed };
 }
