@@ -112,3 +112,59 @@ export async function uploadLessonMedia(
     return await multipartFallback(file, token, options.groupId, options.onProgress);
   }
 }
+
+
+/** Upload through a route-specific, one-time ticket while preserving the existing
+ * multipart route as the compatibility path when object storage is unavailable. */
+export async function uploadRouteMedia<T extends Record<string, unknown>>(
+  file: File,
+  token: string | null,
+  endpoint: string,
+  fields: Record<string, string> = {},
+): Promise<T> {
+  const auth: Record<string, string> = token ? { Authorization: "Bearer " + token } : {};
+  const ticketUrl = endpoint.replace(/\/$/, "") + "/direct-upload-ticket";
+  const completeUrl = endpoint.replace(/\/$/, "") + "/direct-upload-complete";
+  const abortUrl = endpoint.replace(/\/$/, "") + "/direct-upload-abort";
+  const fallback = async (): Promise<T> => {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    for (const [key, value] of Object.entries(fields)) form.append(key, value);
+    const response = await fetch(getApiUrl(endpoint), { method: "POST", headers: auth, body: form });
+    const payload = await response.json().catch(() => ({})) as T & { error?: string };
+    if (!response.ok) throw new Error(payload.error || "Media upload failed (" + response.status + ").");
+    return payload;
+  };
+  let ticket: DirectTicket | null = null;
+  try {
+    const response = await fetch(getApiUrl(ticketUrl), {
+      method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...fields, mimeType: file.type, size: file.size }),
+    });
+    if (response.status === 401 || response.status === 403 || response.status === 400) {
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      throw new Error("AUTHORIZATION: " + (payload?.error || "You are not authorized to upload this media."));
+    }
+    if (!response.ok) return await fallback();
+    ticket = await response.json() as DirectTicket;
+    if (!ticket.ticket || !ticket.uploadUrl || ticket.method !== "PUT") return await fallback();
+    await xhrUpload(ticket.uploadUrl, file, ticket.headers || {});
+    const completed = await fetch(getApiUrl(completeUrl), {
+      method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...fields, ticket: ticket.ticket, mimeType: file.type }),
+    });
+    if (completed.status === 401 || completed.status === 403) {
+      const payload = await completed.json().catch(() => null) as { error?: string } | null;
+      throw new Error("AUTHORIZATION: " + (payload?.error || "You are not authorized to complete this upload."));
+    }
+    if (!completed.ok) throw new Error("Direct upload verification failed.");
+    return await completed.json() as T;
+  } catch (error) {
+    if (ticket) await fetch(getApiUrl(abortUrl), {
+      method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...fields, ticket: ticket.ticket, mimeType: file.type }),
+    }).catch(() => undefined);
+    if (error instanceof Error && /^AUTHORIZATION:/i.test(error.message)) throw error;
+    return await fallback();
+  }
+}
