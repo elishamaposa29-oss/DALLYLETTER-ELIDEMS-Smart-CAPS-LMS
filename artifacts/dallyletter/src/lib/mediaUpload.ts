@@ -123,9 +123,15 @@ export async function uploadRouteMedia<T extends Record<string, unknown>>(
   fields: Record<string, string> = {},
 ): Promise<T> {
   const auth: Record<string, string> = token ? { Authorization: "Bearer " + token } : {};
-  const ticketUrl = endpoint.replace(/\/$/, "") + "/direct-upload-ticket";
-  const completeUrl = endpoint.replace(/\/$/, "") + "/direct-upload-complete";
-  const abortUrl = endpoint.replace(/\/$/, "") + "/direct-upload-abort";
+  const routeUrl = (suffix: string) => {
+    const queryAt = endpoint.indexOf("?");
+    const base = queryAt < 0 ? endpoint : endpoint.slice(0, queryAt);
+    const query = queryAt < 0 ? "" : endpoint.slice(queryAt);
+    return base.replace(/\\/$/, "") + suffix + query;
+  };
+  const ticketUrl = routeUrl("/direct-upload-ticket");
+  const completeUrl = routeUrl("/direct-upload-complete");
+  const abortUrl = routeUrl("/direct-upload-abort");
   const fallback = async (): Promise<T> => {
     const form = new FormData();
     form.append("file", file, file.name);
