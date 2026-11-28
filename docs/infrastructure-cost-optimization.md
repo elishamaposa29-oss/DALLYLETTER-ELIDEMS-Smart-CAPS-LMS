@@ -72,3 +72,31 @@
 - The service worker caches only same-origin, successful, bounded static assets. It refuses private/no-store/no-cache responses, Range requests, API, media, uploads and auth paths. The asset cache has count and byte ceilings; quota failures remain non-fatal.
 - Cache budgets are deliberately small for low-storage Android devices. Cache Storage is opportunistic, not durable offline storage for learner records or submissions. Those continue to use their dedicated offline queue and synchronization contracts.
 - Measure with a repeatable before/after profile: cold and warm page load, bytes transferred, cache hit/miss, `Content-Encoding`, media Range response bytes, API egress and Render monthly transfer. Record device/network profile and avoid claiming savings until measured.
+
+
+## E. Provider-independent media implementation and route inventory (2026-11-28)
+
+### Media path inventory (source audit)
+- **Shared storage core:** `artifacts/api-server/src/lib/media-storage.ts` persists uploads to the configured S3-compatible provider, otherwise to PostgreSQL chunks (20 MiB ceiling); reads support HTTP byte ranges from both provider and PostgreSQL fallback; deletes remove provider, chunk and local staging data.
+- **Lesson / group media:** `POST /api/lessons/media`, `GET /api/lessons/media/:storageKey`, signed share-link creation at `POST /api/lessons/media/:storageKey/share`. This route family also serves assignment materials and submission attachments because those upload endpoints return the lesson-media URL.
+- **Assignment uploads:** `POST /api/assignments/material` and `POST /api/assignments/submission-material`; both persist through the shared media layer and return `/api/lessons/media/:storageKey`.
+- **Exercise media:** question and answer attachment uploads in `artifacts/api-server/src/routes/exercises.ts`; they persist through the same storage layer and return lesson-media URLs.
+- **Chat / voice media:** `POST /api/messages/media` and authenticated `GET /api/messages/media/:storageKey`; private conversation and group membership checks remain in the route before serving.
+- **Profile media:** avatar and profile-cover upload flows in `artifacts/api-server/src/routes/users.ts`; avatars resolve through lesson-media; private teacher documents use a separate user document endpoint and stream from the shared store after role/access checks.
+- **Hand-raise media:** upload flow in `artifacts/api-server/src/routes/handRaises.ts`; returns a lesson-media URL and records media ownership for cleanup.
+- **Clients:** web `AuthenticatedMedia`, `StoredMedia`, lesson preview/student lesson screens; Android `OfflineMediaDownload` and existing lesson/chat/profile screens. These currently depend on the existing API URL contract; do not change URLs during provider rollout.
+- **Legacy data:** older message media and teacher-document bytea storage paths exist independently of the shared object key store and require a separate inventory/migration before deprecation.
+
+### Provider contract and instrumentation
+- The S3-compatible implementation now exposes a provider-neutral `MediaObjectStorageProvider` contract (streaming put, get with optional Range, delete) and declares byte-range/stream-upload capabilities. This is a seam for another S3-compatible provider; it does not claim an R2 connection is active.
+- Transfer telemetry emits structured upload/download/delete events with backend, outcome, duration, byte count where known, Range flag and status. It intentionally excludes storage keys, user IDs, URLs, credentials, signed tokens and object contents.
+- Current metrics are application logs, not a durable dashboard. Aggregate them in the hosting log platform before making cost claims; API-side byte counts do not equal Render network egress or billed transfer.
+
+### Cache safety correction
+- Service-worker navigation caching now stores only the public root document and refuses `private`, `no-store`, or `no-cache` responses. Authenticated SPA routes are never stored under the shared root cache key. Asset caching remains same-origin, bounded and excludes API/media/auth paths and Range requests.
+
+### Verification still required
+- Automated unit tests are wired for the telemetry helper; run `pnpm --dir artifacts/api-server run test:media-telemetry` and full API typecheck/CI on this branch.
+- Add integration tests with a disposable PostgreSQL instance for chunk boundaries, malformed/unsatisfiable/suffix/open-ended ranges, missing chunks, empty objects, integrity, fallback, deletion and authorization on each route family.
+- Provider contract integration tests need a disposable S3-compatible endpoint; verify streamed PUT, GET/Range, 404, delete and checksum. No production credentials are needed for these tests.
+- Audit the exact legacy document/media route handlers and Android attachment consumers before claiming the inventory is exhaustive; the route inventory above covers the shared storage key paths found by source search.
